@@ -145,6 +145,8 @@ fast-server/
 ├── Makefile
 ├── config.yaml.exmple
 └── README.md
+└── Dockerfile
+└── LICENSE
 ```
 
 ### Building
