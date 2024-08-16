@@ -38,7 +38,7 @@ install: linux
 	@echo "Installing $(BINARY_NAME)..."
 	@sudo mkdir -p $(INSTALL_DIR) $(CONFIG_DIR) $(CONFIG_DIR)/ssl $(LOG_DIR) $(WWW_DIR)
 	@sudo cp $(CODE_DIR)/$(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
-	@sudo cp $(CODE_DIR)/config.yaml.example $(CONFIG_DIR)/config.yaml
+	@sudo cp config.yaml.example $(CONFIG_DIR)/config.yaml
 	@sudo cp -R $(CODE_DIR)/public/* $(WWW_DIR)/
 	@echo "Creating systemd service..."
 	@sudo printf "[Unit]\nDescription=FAST - HTTP Static Site Server\nAfter=network.target\n\n[Service]\nType=simple\nRestart=always\nRestartSec=5s\nExecStart=$(INSTALL_DIR)/$(BINARY_NAME)\nUser=root\nGroup=root\nEnvironment=PATH=/usr/bin:/usr/local/bin\nWorkingDirectory=$(WWW_DIR)\n\n[Install]\nWantedBy=multi-user.target\n" > /lib/systemd/system/fast.service
