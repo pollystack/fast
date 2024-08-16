@@ -17,19 +17,19 @@ linux:
 	@echo "Building $(BINARY_NAME) for Linux..."
 	@cd $(CODE_DIR) && go get -d -v && \
 	mkdir -p $(BUILD_DIR) && \
-	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY_NAME) main.go
+	GOOS=linux go build -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 
 darwin:
 	@echo "Building $(BINARY_NAME) for macOS..."
 	@cd $(CODE_DIR) && go get -d -v && \
 	mkdir -p $(BUILD_DIR) && \
-	GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY_NAME)-darwin main.go
+	GOOS=darwin go build -o $(BUILD_DIR)/$(BINARY_NAME)-darwin main.go
 
 windows:
 	@echo "Building $(BINARY_NAME) for Windows..."
 	@cd $(CODE_DIR) && go get -d -v && \
 	mkdir -p $(BUILD_DIR) && \
-	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY_NAME)-windows.exe main.go
+	GOOS=windows go build -o $(BUILD_DIR)/$(BINARY_NAME)-windows.exe main.go
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BUILD_DIR)
