@@ -40,7 +40,7 @@ install: linux
 	@sudo cp $(CODE_DIR)/$(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 	@sudo cp config.yaml.example $(CONFIG_DIR)/config.yaml
 	@echo "Creating systemd service..."
-	@sudo printf "[Unit]\nDescription=FAST - HTTP Static Site Server\nAfter=network.target\n\n[Service]\nType=simple\nRestart=always\nRestartSec=5s\nExecStart=$(INSTALL_DIR)/$(BINARY_NAME)\nUser=root\nGroup=root\nEnvironment=PATH=/usr/bin:/usr/local/bin\nWorkingDirectory=$(WWW_DIR)\n\n[Install]\nWantedBy=multi-user.target\n" > /lib/systemd/system/fast.service
+	@sudo bash -c 'printf "[Unit]\nDescription=FAST - HTTP Static Site Server\nAfter=network.target\n\n[Service]\nType=simple\nRestart=always\nRestartSec=5s\nExecStart=$(INSTALL_DIR)/$(BINARY_NAME)\nUser=root\nGroup=root\nEnvironment=PATH=/usr/bin:/usr/local/bin\nWorkingDirectory=$(WWW_DIR)\n\n[Install]\nWantedBy=multi-user.target\n" > /lib/systemd/system/fast.service'
 	@echo "FAST server installed. Start with:"
 	@echo "-----------------------------------"
 	@echo " $> sudo service fast start"
