@@ -107,6 +107,37 @@ Logs are stored in /var/log/fast/server.log by default. You can view them using:
 sudo tail -f /var/log/fast/server.log
 ```
 
+## Usage Docker
+
+### Prerequisites
+- Docker
+- Make
+
+### Build
+Build the Docker image:
+```bash
+make docker-build
+```
+
+### Run
+Start the FAST server in a Docker container:
+```bash
+make docker-run
+```
+
+### Stop
+Stop and remove the running Docker container:
+```bash
+make docker-stop
+```
+
+### Logs
+View logs from the Docker container:
+
+```bash
+docker logs fast-server-container
+```
+
 ## Development
 
 ### Prerequisites
