@@ -37,7 +37,7 @@ clean:
 install: linux
 	@echo "Installing $(BINARY_NAME)..."
 	@sudo mkdir -p $(INSTALL_DIR) $(CONFIG_DIR) $(CONFIG_DIR)/ssl $(LOG_DIR) $(WWW_DIR)
-	@sudo cp $(CODE_DIR)/$(BUILD_DIR)/$(BINARY_NAME)-linux $(INSTALL_DIR)/$(BINARY_NAME)
+	@sudo cp $(CODE_DIR)/$(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 	@sudo cp $(CODE_DIR)/config.yaml.example $(CONFIG_DIR)/config.yaml
 	@sudo cp -R $(CODE_DIR)/public/* $(WWW_DIR)/
 	@echo "Creating systemd service..."
