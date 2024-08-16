@@ -1,0 +1,29 @@
+server:
+  port: 443
+  http_port: 80  # for HTTP to HTTPS redirect
+
+domains:
+  - name: example.com
+    public_dir: /var/www/fast/example.com
+    ssl:
+      cert_file: /etc/fast/ssl/example.com/fullchain.pem
+      key_file: /etc/fast/ssl/example.com/privkey.pem
+
+  - name: another-domain.com
+    public_dir: /var/www/fast/another-domain.com
+    ssl:
+      cert_file: /etc/fast/ssl/another-domain.com/fullchain.pem
+      key_file: /etc/fast/ssl/another-domain.com/privkey.pem
+
+global_ssl:
+  cert_file: /etc/fast/ssl/global/fullchain.pem
+  key_file: /etc/fast/ssl/global/privkey.pem
+
+log:
+  file: /var/log/fast/server.log
+  level: info  # Options: debug, info, warn, error
+
+settings:
+  read_timeout: 5s
+  write_timeout: 10s
+  graceful_shutdown_timeout: 30s
