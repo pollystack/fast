@@ -5,8 +5,10 @@ INSTALL_DIR=/usr/local/bin
 CONFIG_DIR=/etc/fast
 LOG_DIR=/var/log/fast
 WWW_DIR=/var/www/fast
+DOCKER_IMAGE_NAME=fast-server
+DOCKER_CONTAINER_NAME=fast-server-container
 
-.PHONY: all linux darwin windows clean install uninstall
+.PHONY: all linux darwin windows clean install uninstall docker-build docker-run docker-stop
 
 all: linux darwin windows
 
@@ -33,28 +35,16 @@ install: linux
 	@echo "Installing $(BINARY_NAME)..."
 	@sudo mkdir -p $(INSTALL_DIR) $(CONFIG_DIR) $(CONFIG_DIR)/ssl $(LOG_DIR) $(WWW_DIR)
 	@sudo cp $(BUILD_DIR)/$(BINARY_NAME)-linux $(INSTALL_DIR)/$(BINARY_NAME)
-	@sudo cp config.yaml $(CONFIG_DIR)/config.yaml
+	@sudo cp config.yaml.example $(CONFIG_DIR)/config.yaml
 	@sudo cp -R public/* $(WWW_DIR)/
 	@echo "Creating systemd service..."
-	@sudo tee /etc/systemd/system/fast.service > /dev/null <<EOF
-[Unit]
-Description=FAST - HTTP Static Site Server
-After=network.target
-
-[Service]
-ExecStart=$(INSTALL_DIR)/$(BINARY_NAME)
-Restart=always
-User=root
-Group=root
-Environment=PATH=/usr/bin:/usr/local/bin
-WorkingDirectory=$(WWW_DIR)
-
-[Install]
-WantedBy=multi-user.target
-EOF
-	@sudo systemctl daemon-reload
+	@sudo printf "[Unit]\nDescription=FAST - HTTP Static Site Server\nAfter=network.target\n\n[Service]\nType=simple\nRestart=always\nRestartSec=5s\nExecStart=$(INSTALL_DIR)/$(BINARY_NAME)\nUser=root\nGroup=root\nEnvironment=PATH=/usr/bin:/usr/local/bin\nWorkingDirectory=$(WWW_DIR)\n\n[Install]\nWantedBy=multi-user.target\n" > /lib/systemd/system/fast.service
+	@echo "FAST server installed. Start with:"
+	@echo "-----------------------------------"
+	@echo " $> sudo service fast start"
+	@echo "-----------------------------------"
+	@echo "Enabling Service"
 	@sudo systemctl enable fast.service
-	@echo "FAST server installed. Start with: sudo systemctl start fast"
 
 uninstall:
 	@echo "Uninstalling $(BINARY_NAME)..."
@@ -67,3 +57,24 @@ uninstall:
 	@sudo rm -rf $(WWW_DIR)
 	@sudo systemctl daemon-reload
 	@echo "FAST server uninstalled"
+
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t $(DOCKER_IMAGE_NAME) .
+
+docker-run:
+	@echo "Running Docker container..."
+	docker run -d \
+		-p 80:80 \
+		-p 443:443 \
+		-v $(WWW_DIR):/var/www/fast \
+		-v $(CONFIG_DIR)/ssl:/etc/fast/ssl \
+		-v $(LOG_DIR):/var/log/fast \
+		-v $(CONFIG_DIR)/config.yaml:/etc/fast/config.yaml \
+		--name $(DOCKER_CONTAINER_NAME) \
+		$(DOCKER_IMAGE_NAME)
+
+docker-stop:
+	@echo "Stopping Docker container..."
+	docker stop $(DOCKER_CONTAINER_NAME)
+	docker rm $(DOCKER_CONTAINER_NAME)
