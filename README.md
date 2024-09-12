@@ -1,6 +1,9 @@
-# FAST - HTTP Static Site Server
+# FAST - HTTP Static Site Server and Reverse Proxy
 
-FAST (File Access Speedy Transfer) is a lightweight, high-performance web server designed specifically for serving static content. It prioritizes speed and efficiency, making it ideal for quickly delivering HTML, CSS, JavaScript, images, and other static assets to web browsers.
+FAST (File Access Speedy Transfer) is a lightweight, 
+high-performance web server designed for serving static content and acting as a reverse proxy. 
+It prioritizes speed and efficiency, making it ideal for quickly delivering static assets and proxying requests to 
+backend services.
 
 ## Features
 
@@ -8,10 +11,11 @@ FAST (File Access Speedy Transfer) is a lightweight, high-performance web server
 - SSL/TLS encryption
 - HTTP to HTTPS redirection
 - Domain-specific public directories
+- Reverse proxy support
 - Easy configuration via YAML
 - Systemd service integration
 - Minimal configuration required, allowing for quick setup and deployment
-- Optimized for serving static files, without the overhead of dynamic content processing
+- Optimized for serving static files and proxying requests
 - High concurrency, able to handle multiple simultaneous connections efficiently
 - Low memory footprint, making it suitable for various hosting environments
 - Built-in caching mechanisms to further enhance performance
@@ -58,34 +62,40 @@ The server is configured via the `config.yaml` file. Here's an example configura
 
 ```yaml
 server:
-  port: 443
-  http_port: 80  # for HTTP to HTTPS redirect
+   port: 443
+   http_port: 80  # for HTTP to HTTPS redirect
 
 domains:
-  - name: example.com
-    public_dir: /var/www/fast/example.com
-    ssl:
-      cert_file: /etc/fast/ssl/example.com/fullchain.pem
-      key_file: /etc/fast/ssl/example.com/privkey.pem
+   - name: example.com
+     type: static
+     public_dir: /var/www/fast/example.com
+     ssl:
+        cert_file: /etc/fast/ssl/example.com/fullchain.pem
+        key_file: /etc/fast/ssl/example.com/privkey.pem
 
-  - name: another-domain.com
-    public_dir: /var/www/fast/another-domain.com
-    ssl:
-      cert_file: /etc/fast/ssl/another-domain.com/fullchain.pem
-      key_file: /etc/fast/ssl/another-domain.com/privkey.pem
+   - name: api.example.com
+     type: proxy
+     proxy:
+        host: 192.168.1.100
+        port: 8000
+     ssl:
+        cert_file: /etc/fast/ssl/api.example.com/fullchain.pem
+        key_file: /etc/fast/ssl/api.example.com/privkey.pem
 
 global_ssl:
-  cert_file: /etc/fast/ssl/global/fullchain.pem
-  key_file: /etc/fast/ssl/global/privkey.pem
+   cert_file: /etc/fast/ssl/global/fullchain.pem
+   key_file: /etc/fast/ssl/global/privkey.pem
 
 log:
-  file: /var/log/fast/server.log
-  level: info  # Options: debug, info, warn, error
+   file: /var/log/fast/server.log
+   level: info  # Options: debug, info, warn, error
 
 settings:
-  read_timeout: 5s
-  write_timeout: 10s
-  graceful_shutdown_timeout: 30s
+   read_timeout: 5s
+   write_timeout: 10s
+   graceful_shutdown_timeout: 30s
+
+is_development: false
 ```
 
 

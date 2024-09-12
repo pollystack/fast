@@ -4,16 +4,36 @@ server:
 
 domains:
   - name: example.com
+    type: static
     public_dir: /var/www/fast/example.com
     ssl:
       cert_file: /etc/fast/ssl/example.com/fullchain.pem
       key_file: /etc/fast/ssl/example.com/privkey.pem
 
   - name: another-domain.com
+    type: static
     public_dir: /var/www/fast/another-domain.com
     ssl:
       cert_file: /etc/fast/ssl/another-domain.com/fullchain.pem
       key_file: /etc/fast/ssl/another-domain.com/privkey.pem
+
+  - name: api.example.com
+    type: proxy
+    proxy:
+      host: 192.168.1.100
+      port: 8000
+    ssl:
+      cert_file: /etc/fast/ssl/api.example.com/fullchain.pem
+      key_file: /etc/fast/ssl/api.example.com/privkey.pem
+
+  - name: blog.example.com
+    type: proxy
+    proxy:
+      host: 192.168.1.101
+      port: 9000
+    ssl:
+      cert_file: /etc/fast/ssl/blog.example.com/fullchain.pem
+      key_file: /etc/fast/ssl/blog.example.com/privkey.pem
 
 global_ssl:
   cert_file: /etc/fast/ssl/global/fullchain.pem
@@ -27,3 +47,5 @@ settings:
   read_timeout: 5s
   write_timeout: 10s
   graceful_shutdown_timeout: 30s
+
+is_development: false
