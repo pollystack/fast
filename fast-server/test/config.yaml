@@ -4,20 +4,31 @@ server:
 
 domains:
   - name: domain1.lan
-    public_dir: fast-server/test/public/domain1.lan
+    type: static
+    public_dir: test/public/domain1.lan
     ssl:
-      cert_file: fast-server/test/ssl/domain1.lan/fullchain.pem
-      key_file: fast-server/test/ssl/domain1.lan/privkey.pem
+      cert_file: test/ssl/domain1.lan/fullchain.pem
+      key_file: test/ssl/domain1.lan/privkey.pem
 
   - name: domain2.lan
-    public_dir: fast-server/test/public/domain2.lan
+    type: static
+    public_dir: test/public/domain2.lan
     ssl:
-      cert_file: fast-server/test/ssl/domain2.lan/fullchain.pem
-      key_file: fast-server/test/ssl/domain2.lan/privkey.pem
+      cert_file: test/ssl/domain2.lan/fullchain.pem
+      key_file: test/ssl/domain2.lan/privkey.pem
+
+  - name: domain3.lan
+    type: proxy
+    proxy:
+      host: 127.0.0.1
+      port: 8000
+    ssl:
+      cert_file: test/ssl/domain2.lan/fullchain.pem
+      key_file: test/ssl/domain2.lan/privkey.pem
 
 global_ssl:
-  cert_file: fast-server/test/ssl/global/fullchain.pem
-  key_file: fast-server/test/ssl/global/privkey.pem
+  cert_file: test/ssl/global/fullchain.pem
+  key_file: test/ssl/global/privkey.pem
 
 log:
   file: log/server.log

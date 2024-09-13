@@ -82,7 +82,7 @@ func isLaunchedByDebugger() bool {
 func LoadConfig() (*Config, error) {
 	var configPath string
 	if isLaunchedByDebugger() {
-		configPath = "fast-server/test/config.yaml" // Local path for development
+		configPath = "test/config.yaml" // Local path for development
 		log.Println("Debug mode detected. Using local config.yaml")
 	} else {
 		configPath = ProductionConfigPath // Default production path
