@@ -4,16 +4,34 @@ server:
 
 domains:
   - name: example.com
+    type: static
     public_dir: /var/www/fast/example.com
     ssl:
       cert_file: /etc/fast/ssl/example.com/fullchain.pem
       key_file: /etc/fast/ssl/example.com/privkey.pem
 
+  - name: files.example.com
+    type: file_directory
+    public_dir: /var/www/fast/files
+    ssl:
+      cert_file: /etc/fast/ssl/files.example.com/fullchain.pem
+      key_file: /etc/fast/ssl/files.example.com/privkey.pem
+
   - name: another-domain.com
+    type: static
     public_dir: /var/www/fast/another-domain.com
     ssl:
       cert_file: /etc/fast/ssl/another-domain.com/fullchain.pem
       key_file: /etc/fast/ssl/another-domain.com/privkey.pem
+
+  - name: api.example.com
+    type: proxy
+    proxy:
+      host: 127.0.0.1
+      port: 8000
+    ssl:
+      cert_file: /etc/fast/ssl/api.example.com/fullchain.pem
+      key_file: /etc/fast/ssl/api.example.com/privkey.pem
 
 global_ssl:
   cert_file: /etc/fast/ssl/global/fullchain.pem
