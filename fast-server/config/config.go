@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
+	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -61,7 +61,7 @@ func isLaunchedByDebugger() bool {
 	// Use gops to check the parent process
 	gopsOut, err := exec.Command("gops", strconv.Itoa(os.Getppid())).Output()
 	if err != nil {
-		log.Printf("Error running gops: %v", err)
+		echo.New().Logger.Warnf("Error running gops: %v", err)
 		return false
 	}
 
@@ -83,7 +83,7 @@ func LoadConfig() (*Config, error) {
 	var configPath string
 	if isLaunchedByDebugger() {
 		configPath = "test/config.yaml" // Local path for development
-		log.Println("Debug mode detected. Using local config.yaml")
+		echo.New().Logger.Info("Debug mode detected. Using local config.yaml")
 	} else {
 		configPath = ProductionConfigPath // Default production path
 	}

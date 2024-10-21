@@ -54,9 +54,9 @@ func New(cfg *config.Config) *Server {
 }
 
 func (s *Server) Start() error {
-	log.Println("Setting up routes for domains:")
+	s.echo.Logger.Info("Setting up routes for domains:")
 	for _, domain := range s.config.Domains {
-		log.Printf("  - %s (Type: %s, Public Dir: %s)", domain.Name, domain.Type, domain.PublicDir)
+		s.echo.Logger.Infof("  - %s (Type: %s, Public Dir: %s)", domain.Name, domain.Type, domain.PublicDir)
 	}
 	s.setupRoutes()
 
@@ -153,7 +153,7 @@ func (s *Server) setupTLSConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load SSL cert for %s: %v", domain.Name, err)
 		}
 		certificates[domain.Name] = cert
-		log.Printf("Loaded certificate for domain: %s", domain.Name)
+		s.echo.Logger.Infof("Loaded certificate for domain: %s", domain.Name)
 	}
 
 	// Load global SSL certificate if provided
@@ -163,12 +163,12 @@ func (s *Server) setupTLSConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to load global SSL cert: %v", err)
 		}
 		certificates[""] = globalCert
-		log.Println("Loaded global SSL certificate")
+		s.echo.Logger.Info("Loaded global SSL certificate")
 	}
 
 	return &tls.Config{
 		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			log.Printf("Client requesting certificate for ServerName: %s", info.ServerName)
+			s.echo.Logger.Infof("Client requesting certificate for ServerName: %s", info.ServerName)
 
 			if cert, ok := certificates[info.ServerName]; ok {
 				return &cert, nil
@@ -183,17 +183,17 @@ func (s *Server) setupTLSConfig() (*tls.Config, error) {
 
 			// If still no match, return the global certificate if available
 			if globalCert, ok := certificates[""]; ok {
-				log.Printf("Using global certificate for ServerName: %s", info.ServerName)
+				s.echo.Logger.Infof("Using global certificate for ServerName: %s", info.ServerName)
 				return &globalCert, nil
 			}
 
 			// As a last resort, return the first certificate in the map
 			for _, cert := range certificates {
-				log.Printf("Using first available certificate for ServerName: %s", info.ServerName)
+				s.echo.Logger.Infof("Using first available certificate for ServerName: %s", info.ServerName)
 				return &cert, nil
 			}
 
-			log.Printf("No suitable certificate found for ServerName: %s", info.ServerName)
+			s.echo.Logger.Warnf("No suitable certificate found for ServerName: %s", info.ServerName)
 			return nil, fmt.Errorf("no suitable certificate found")
 		},
 		MinVersion:               tls.VersionTLS12,

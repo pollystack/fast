@@ -3,7 +3,6 @@ package handlers
 import (
 	"fast/config"
 	"github.com/labstack/echo/v4"
-	"log"
 	"strings"
 )
 
@@ -21,7 +20,7 @@ func SetupDomainRoutes(e *echo.Echo, domains []config.Domain) {
 			if strings.Contains(host, ":") {
 				host = strings.Split(host, ":")[0]
 			}
-			log.Printf("Incoming request for host: %s", host)
+			c.Logger().Infof("Incoming request for host: %s", host)
 
 			var matchedDomain config.Domain
 			var matchedName string
@@ -35,11 +34,11 @@ func SetupDomainRoutes(e *echo.Echo, domains []config.Domain) {
 			}
 
 			if matchedName == "" {
-				log.Printf("No matching domain found for host: %s", host)
+				c.Logger().Warnf("No matching domain found for host: %s", host)
 				return echo.ErrNotFound
 			}
 
-			log.Printf("Matched domain: %s", matchedName)
+			c.Logger().Infof("Matched domain: %s", matchedName)
 			c.Set("domain", matchedDomain)
 			return next(c)
 		}

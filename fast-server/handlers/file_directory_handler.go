@@ -4,7 +4,6 @@ import (
 	"fast/config"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -49,11 +48,13 @@ func HandleFileDirectory(c echo.Context, domain config.Domain) error {
 
 	// Prevent directory traversal
 	if !strings.HasPrefix(fullPath, domain.PublicDir) {
+		c.Logger().Warnf("Attempted directory traversal: %s", fullPath)
 		return echo.ErrNotFound
 	}
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
+		c.Logger().Warnf("File not found: %s", fullPath)
 		return echo.ErrNotFound
 	}
 
@@ -61,22 +62,30 @@ func HandleFileDirectory(c echo.Context, domain config.Domain) error {
 		return serveDirectory(c, fullPath, path, domain.Name)
 	}
 
+	c.Logger().Infof("Serving file: %s", fullPath)
 	return serveFile(c, fullPath, info)
 }
 
 func serveDirectory(c echo.Context, fullPath, relativePath, domainName string) error {
-	files, err := ioutil.ReadDir(fullPath)
+	entries, err := os.ReadDir(fullPath)
 	if err != nil {
+		c.Logger().Errorf("Failed to read directory %s: %v", fullPath, err)
 		return echo.ErrInternalServerError
 	}
 
 	var fileInfos []FileInfo
-	for _, f := range files {
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			// Log the error but continue with other files
+			c.Logger().Warnf("Error getting file info for %s: %v", entry.Name(), err)
+			continue
+		}
 		fileInfos = append(fileInfos, FileInfo{
-			Name:         f.Name(),
-			IsDir:        f.IsDir(),
-			Size:         f.Size(),
-			LastModified: f.ModTime(),
+			Name:         entry.Name(),
+			IsDir:        entry.IsDir(),
+			Size:         info.Size(),
+			LastModified: info.ModTime(),
 		})
 	}
 
@@ -87,6 +96,7 @@ func serveDirectory(c echo.Context, fullPath, relativePath, domainName string) e
 		return fileInfos[i].IsDir
 	})
 
+	c.Logger().Infof("Serving directory: %s", relativePath)
 	return c.Render(http.StatusOK, "file_directory.html", map[string]interface{}{
 		"DomainName":  domainName,
 		"CurrentPath": relativePath,
@@ -98,9 +108,15 @@ func serveDirectory(c echo.Context, fullPath, relativePath, domainName string) e
 func serveFile(c echo.Context, filePath string, info os.FileInfo) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return err
+		c.Logger().Errorf("Failed to open file %s: %v", filePath, err)
+		return echo.ErrInternalServerError
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			c.Logger().Warnf("Failed to close file %s: %v", filePath, err)
+		}
+	}(file)
 
 	c.Response().Header().Set("Accept-Ranges", "bytes")
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filePath)))
@@ -108,16 +124,19 @@ func serveFile(c echo.Context, filePath string, info os.FileInfo) error {
 	rangeHeader := c.Request().Header.Get("Range")
 	if rangeHeader != "" {
 		if strings.Contains(rangeHeader, ",") {
+			c.Logger().Warnf("Multiple ranges not supported: %s", rangeHeader)
 			return c.String(http.StatusRequestedRangeNotSatisfiable, "Multiple ranges are not supported")
 		}
 
 		parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
 		if len(parts) != 2 {
+			c.Logger().Warnf("Invalid range header: %s", rangeHeader)
 			return c.String(http.StatusBadRequest, "Invalid range header")
 		}
 
 		start, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
+			c.Logger().Warnf("Invalid range start: %s", parts[0])
 			return c.String(http.StatusBadRequest, "Invalid range start")
 		}
 
@@ -125,6 +144,7 @@ func serveFile(c echo.Context, filePath string, info os.FileInfo) error {
 		if parts[1] != "" {
 			end, err = strconv.ParseInt(parts[1], 10, 64)
 			if err != nil {
+				c.Logger().Warnf("Invalid range end: %s", parts[1])
 				return c.String(http.StatusBadRequest, "Invalid range end")
 			}
 		} else {
@@ -132,6 +152,7 @@ func serveFile(c echo.Context, filePath string, info os.FileInfo) error {
 		}
 
 		if start >= info.Size() || end >= info.Size() || start > end {
+			c.Logger().Warnf("Invalid range: %d-%d for file size %d", start, end, info.Size())
 			return c.String(http.StatusRequestedRangeNotSatisfiable, "Invalid range")
 		}
 
@@ -141,15 +162,24 @@ func serveFile(c echo.Context, filePath string, info os.FileInfo) error {
 
 		_, err = file.Seek(start, io.SeekStart)
 		if err != nil {
-			return err
+			c.Logger().Errorf("Failed to seek file %s: %v", filePath, err)
+			return echo.ErrInternalServerError
 		}
 
 		_, err = io.CopyN(c.Response().Writer, file, end-start+1)
-		return err
+		if err != nil {
+			c.Logger().Errorf("Failed to copy file content %s: %v", filePath, err)
+			return echo.ErrInternalServerError
+		}
+		return nil
 	}
 
 	c.Response().Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	c.Response().WriteHeader(http.StatusOK)
 	_, err = io.Copy(c.Response().Writer, file)
-	return err
+	if err != nil {
+		c.Logger().Errorf("Failed to copy file content %s: %v", filePath, err)
+		return echo.ErrInternalServerError
+	}
+	return nil
 }
