@@ -2,13 +2,8 @@ package handlers
 
 import (
 	"fast/config"
-	"fmt"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"log"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -51,63 +46,20 @@ func SetupDomainRoutes(e *echo.Echo, domains []config.Domain) {
 	})
 
 	// Root handler
-	e.GET("/", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
-		if domain.Type == "proxy" {
-			return handleProxy(c, domain)
-		}
-		return serveIndexOrFile(c, domain.PublicDir, "index.html")
-	})
+	e.GET("/", handleRequest)
 
-	// Static file handler or proxy handler
-	e.Any("/*", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
-		if domain.Type == "proxy" {
-			return handleProxy(c, domain)
-		}
-		return serveIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
-	})
+	// Catch-all handler
+	e.GET("/*", handleRequest)
 }
 
-func handleProxy(c echo.Context, domain config.Domain) error {
-	target, err := url.Parse(fmt.Sprintf("http://%s:%d", domain.Proxy.Host, domain.Proxy.Port))
-	if err != nil {
-		log.Printf("Error parsing proxy URL: %v", err)
-		return echo.ErrInternalServerError
+func handleRequest(c echo.Context) error {
+	domain := c.Get("domain").(config.Domain)
+	switch domain.Type {
+	case "proxy":
+		return HandleProxy(c, domain)
+	case "file_directory":
+		return HandleFileDirectory(c, domain)
+	default:
+		return ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
 	}
-
-	proxyMiddleware := middleware.ProxyWithConfig(middleware.ProxyConfig{
-		Balancer: middleware.NewRoundRobinBalancer([]*middleware.ProxyTarget{
-			{
-				URL: target,
-			},
-		}),
-		Rewrite: map[string]string{
-			"/*": "/$1",
-		},
-	})
-
-	return proxyMiddleware(func(c echo.Context) error {
-		return nil
-	})(c)
-}
-
-func serveIndexOrFile(c echo.Context, publicDir, requestPath string) error {
-	fullPath := filepath.Join(publicDir, filepath.Clean(requestPath))
-
-	// Prevent directory traversal
-	if !strings.HasPrefix(fullPath, publicDir) {
-		log.Printf("Attempted directory traversal detected: %s", fullPath)
-		return echo.ErrNotFound
-	}
-
-	if stat, err := os.Stat(fullPath); err == nil && !stat.IsDir() {
-		log.Printf("Serving file: %s", fullPath)
-		return c.File(fullPath)
-	}
-
-	// If file doesn't exist or is a directory, serve the root index.html
-	indexPath := filepath.Join(publicDir, "index.html")
-	log.Printf("Serving index.html: %s", indexPath)
-	return c.File(indexPath)
 }

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Directory - {{.DomainName}}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        h1 { margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        a { text-decoration: none; color: #007bff; }
+        .folder::before { content: "📁 "; }
+        .file::before { content: "📄 "; }
+    </style>
+</head>
+<body>
+<h1>File Directory - {{.DomainName}}</h1>
+<p>Current Path: {{.CurrentPath}}</p>
+{{if ne .CurrentPath "/"}}
+<p><a href="{{.ParentPath}}">..</a></p>
+{{end}}
+<table>
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Size</th>
+        <th>Last Modified</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{range .Files}}
+    <tr>
+        <td>
+            {{if .IsDir}}
+            <a href="{{$.CurrentPath}}/{{.Name}}" class="folder">{{.Name}}</a>
+            {{else}}
+            <a href="{{$.CurrentPath}}/{{.Name}}" class="file" target="_blank">{{.Name}}</a>
+            {{end}}
+        </td>
+        <td>{{.FormattedSize}}</td>
+        <td>{{.FormattedDate}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+</body>
+</html>
