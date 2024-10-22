@@ -77,7 +77,6 @@ func serveDirectory(c echo.Context, fullPath, relativePath, domainName string) e
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
-			// Log the error but continue with other files
 			c.Logger().Warnf("Error getting file info for %s: %v", entry.Name(), err)
 			continue
 		}
@@ -96,11 +95,17 @@ func serveDirectory(c echo.Context, fullPath, relativePath, domainName string) e
 		return fileInfos[i].IsDir
 	})
 
-	c.Logger().Infof("Serving directory: %s", relativePath)
+	// Clean the paths
+	cleanedRelativePath := "/" + strings.Trim(filepath.Clean(relativePath), "/")
+	cleanedParentPath := "/" + strings.Trim(filepath.Clean(filepath.Dir(relativePath)), "/")
+	if cleanedParentPath == "/." {
+		cleanedParentPath = "/"
+	}
+
 	return c.Render(http.StatusOK, "file_directory.html", map[string]interface{}{
 		"DomainName":  domainName,
-		"CurrentPath": relativePath,
-		"ParentPath":  filepath.Dir(relativePath),
+		"CurrentPath": cleanedRelativePath,
+		"ParentPath":  cleanedParentPath,
 		"Files":       fileInfos,
 	})
 }

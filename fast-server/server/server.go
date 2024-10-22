@@ -37,9 +37,27 @@ func (t *TemplateRenderer) Render(w io.Writer, name string, data interface{}, c 
 func New(cfg *config.Config) *Server {
 	e := echo.New()
 
-	// Initialize and set the renderer
+	// Initialize and set the renderer with custom functions
 	renderer := &TemplateRenderer{
-		templates: template.Must(template.ParseGlob("templates/*.html")),
+		templates: template.Must(template.New("").Funcs(template.FuncMap{
+			"splitPath": func(path string) []string {
+				// Remove leading and trailing slashes
+				path = strings.Trim(path, "/")
+				if path == "" {
+					return []string{}
+				}
+				return strings.Split(path, "/")
+			},
+			"joinPath": func(base, path string) string {
+				if base == "" {
+					return "/" + path
+				}
+				return base + "/" + path
+			},
+			"lastIndex": func(arr []string) int {
+				return len(arr) - 1
+			},
+		}).ParseGlob("templates/*.html")),
 	}
 	e.Renderer = renderer
 
