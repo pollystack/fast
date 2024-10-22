@@ -130,7 +130,7 @@
         <h1>File Directory - {{.DomainName}}</h1>
         <div class="breadcrumb">
         {{if ne .CurrentPath "/"}}
-            <a href="/" class="folder">root</a>
+            <a href="/" class="folder">&nbsp;root</a>
             {{$paths := splitPath .CurrentPath}}
             {{$accumulated := ""}}
             {{range $index, $element := $paths}}
@@ -179,7 +179,7 @@
     </table>
 </div>
 <div class="footer">
-    © 2024 PollyStack. All rights reserved. Fast is released under
+    © 2024 PollyStack. All rights reserved. <i><b>Fast</b></i> is released under
     <a href="https://github.com/pollystack/fast/blob/main/LICENSE" target="_blank">MIT License</a>.
     <a href="https://github.com/pollystack/fast" target="_blank">
         <svg class="github-icon" viewBox="0 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg">
