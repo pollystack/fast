@@ -182,21 +182,24 @@ go install github.com/google/gops@latest
 ### Project Structure
 
 ```azure
-fast-server/
-   ├── main.go
-   ├── config/
-   │   └── config.go
-   ├── server/
-   │   └── server.go
-   ├── handlers/
-   │   └── handlers.go
-   ├── public/
-   │   └── ... (static files)
-   ├── Makefile
-   ├── config.yaml.exmple
-   └── README.md
-   └── Dockerfile
-   └── LICENSE
+fast-server
+├── config
+│   └── config.go
+├── go.mod
+├── go.sum
+├── handlers
+│   ├── file_directory_handler.go
+│   ├── handlers.go
+│   ├── proxy_handler.go
+│   └── static_handler.go
+├── main.go
+├── server
+│   └── server.go
+├── templates
+│   └── file_directory.html
+└── test
+    ├── config.yaml
+    └── public
 ```
 
 ### Building
