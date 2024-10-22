@@ -16,6 +16,7 @@ backend services.
 - Systemd service integration
 - Minimal configuration required, allowing for quick setup and deployment
 - Optimized for serving static files and proxying requests
+- Optimized for serving file directories with resume on disconnect support for downloads
 - High concurrency, able to handle multiple simultaneous connections efficiently
 - Low memory footprint, making it suitable for various hosting environments
 - Built-in caching mechanisms to further enhance performance
@@ -66,12 +67,20 @@ server:
    http_port: 80  # for HTTP to HTTPS redirect
 
 domains:
-   - name: example.com
+
+   - name: static.example.com
      type: static
-     public_dir: /var/www/fast/example.com
+     public_dir: /var/www/fast/static.example.com
      ssl:
-        cert_file: /etc/fast/ssl/example.com/fullchain.pem
-        key_file: /etc/fast/ssl/example.com/privkey.pem
+        cert_file: /etc/fast/ssl/static.example.com/fullchain.pem
+        key_file: /etc/fast/ssl/static.example.com/privkey.pem
+
+   - name: files.example.com
+     type: file_directory
+     public_dir: /var/www/fast/files.example.com
+     ssl:
+        cert_file: /etc/fast/ssl/files.example.com/fullchain.pem
+        key_file: /etc/fast/ssl/files.example.com/privkey.pem
 
    - name: api.example.com
      type: proxy

@@ -11,7 +11,7 @@ domains:
       key_file: test/ssl/domain1.lan/privkey.pem
 
   - name: domain2.lan
-    type: static
+    type: file_directory
     public_dir: test/public/domain2.lan
     ssl:
       cert_file: test/ssl/domain2.lan/fullchain.pem
