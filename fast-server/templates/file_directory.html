@@ -78,15 +78,15 @@
         }
 
         .back-icon::before {
-            content: "⬅️ ";
+            content: "⬅️";
         }
 
         .folder::before {
-            content: "📁 ";
+            content: "📁";
         }
 
         .file::before {
-            content: "📄 ";
+            content: "📄";
         }
 
         .current-path {
@@ -126,30 +126,30 @@
     </style>
 </head>
 <body>
-<div class="content">
-    <h1>File Directory - {{.DomainName}}</h1>
-    <div class="breadcrumb">
+    <div class="content">
+        <h1>File Directory - {{.DomainName}}</h1>
+        <div class="breadcrumb">
         {{if ne .CurrentPath "/"}}
-        <a href="/" class="folder">root</a>
-        {{$paths := splitPath .CurrentPath}}
-        {{$accumulated := ""}}
-        {{range $index, $element := $paths}}
-        <span>/</span>
-        {{$accumulated = joinPath $accumulated $element}}
-        {{if ne $index (lastIndex $paths)}}
-        <a href="{{$accumulated}}" class="folder">{{$element}}</a>
+            <a href="/" class="folder">root</a>
+            {{$paths := splitPath .CurrentPath}}
+            {{$accumulated := ""}}
+            {{range $index, $element := $paths}}
+                <span>/</span>
+                {{$accumulated = joinPath $accumulated $element}}
+                {{if ne $index (lastIndex $paths)}}
+                    <a href="{{$accumulated}}" class="folder">&nbsp;{{$element}}</a>
+                {{else}}
+                    <span class="folder">&nbsp;{{$element}}</span>
+                {{end}}
+            {{end}}
         {{else}}
-        <span class="folder">{{$element}}</span>  <!-- Added folder class here -->
+            <span>root</span>
         {{end}}
-        {{end}}
-        {{else}}
-        <span class="folder">root</span>
-        {{end}}
-    </div>
+        </div>
 
     {{if ne .CurrentPath "/"}}
     <div>
-        <a href="{{.ParentPath}}" class="back-icon">Back to parent directory</a>
+        <a href="{{.ParentPath}}" class="back-icon">&nbsp;Back to parent directory</a>
     </div>
     {{end}}
     <br/>
@@ -166,9 +166,9 @@
         <tr>
             <td>
                 {{if .IsDir}}
-                <a href="{{$.CurrentPath}}/{{.Name}}" class="folder">{{.Name}}</a>
+                <a href="{{$.CurrentPath}}/{{.Name}}" class="folder">&nbsp;{{.Name}}</a>
                 {{else}}
-                <a href="{{$.CurrentPath}}/{{.Name}}" class="file" target="_blank">{{.Name}}</a>
+                <a href="{{$.CurrentPath}}/{{.Name}}" class="file" target="_blank">&nbsp;{{.Name}}</a>
                 {{end}}
             </td>
             <td>{{.FormattedSize}}</td>
