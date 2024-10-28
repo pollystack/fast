@@ -5,11 +5,9 @@ INSTALL_DIR=/usr/local/bin
 CONFIG_DIR=/etc/fast
 LOG_DIR=/var/log/fast
 WWW_DIR=/var/www/fast
-DOCKER_IMAGE_NAME=fast-server
 CODE_DIR=fast-server
-DOCKER_CONTAINER_NAME=fast-server-container
 
-.PHONY: all linux darwin windows clean install uninstall docker-build docker-run docker-stop
+.PHONY: all linux darwin windows clean install uninstall docker-compose-up docker-compose-down docker-compose-build docker-compose-logs
 
 all: linux darwin windows
 
@@ -30,6 +28,7 @@ windows:
 	@cd $(CODE_DIR) && go get -d -v && \
 	mkdir -p $(BUILD_DIR) && \
 	GOOS=windows go build -o $(BUILD_DIR)/$(BINARY_NAME)-windows.exe main.go
+
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BUILD_DIR)
@@ -59,23 +58,30 @@ uninstall:
 	@sudo systemctl daemon-reload
 	@echo "FAST server uninstalled"
 
-docker-build:
-	@echo "Building Docker image..."
-	docker build -t $(DOCKER_IMAGE_NAME) .
+# Docker Compose commands
+docker-compose-build:
+	@echo "Building with Docker Compose..."
+	docker-compose build
 
-docker-run:
-	@echo "Running Docker container..."
-	docker run -d \
-		-p 80:80 \
-		-p 443:443 \
-		-v $(WWW_DIR):/var/www/fast \
-		-v $(CONFIG_DIR)/ssl:/etc/fast/ssl \
-		-v $(LOG_DIR):/var/log/fast \
-		-v $(CONFIG_DIR)/config.yaml:/etc/fast/config.yaml \
-		--name $(DOCKER_CONTAINER_NAME) \
-		$(DOCKER_IMAGE_NAME)
+docker-compose-up:
+	@echo "Starting with Docker Compose..."
+	docker-compose up -d
 
-docker-stop:
-	@echo "Stopping Docker container..."
-	docker stop $(DOCKER_CONTAINER_NAME)
-	docker rm $(DOCKER_CONTAINER_NAME)
+docker-compose-down:
+	@echo "Stopping with Docker Compose..."
+	docker-compose down
+
+docker-compose-logs:
+	@echo "Viewing Docker Compose logs..."
+	docker-compose logs -f
+
+# Initialize development environment
+init-dev:
+	@echo "Initializing development environment..."
+	@cp config.yaml.example config.yaml
+	@cp .env.example .env
+	@mkdir -p ssl/domain1.lan ssl/domain2.lan ssl/global www logs
+	@echo "Generating test certificates..."
+	@openssl req -x509 -newkey rsa:4096 -keyout ssl/domain1.lan/privkey.pem -out ssl/domain1.lan/fullchain.pem -days 365 -nodes -subj "/CN=domain1.lan"
+	@openssl req -x509 -newkey rsa:4096 -keyout ssl/domain2.lan/privkey.pem -out ssl/domain2.lan/fullchain.pem -days 365 -nodes -subj "/CN=domain2.lan"
+	@openssl req -x509 -newkey rsa:4096 -keyout ssl/global/privkey.pem -out ssl/global/fullchain.pem -days 365 -nodes -subj "/CN=localhost"
