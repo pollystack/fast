@@ -268,7 +268,7 @@ settings:
 
 ### Directory Structure
 
-```azure
+```
 fast-server/
    ├── config/
    │   └── config.go          # Configuration handling
