@@ -5,14 +5,14 @@ server:
 domains:
   - name: domain1.lan
     type: static
-    public_dir: test/public/domain1.lan
+    public_dir: test/www/domain1.lan
     ssl:
       cert_file: test/ssl/domain1.lan/fullchain.pem
       key_file: test/ssl/domain1.lan/privkey.pem
 
   - name: domain2.lan
     type: file_directory
-    public_dir: test/public/domain2.lan
+    public_dir: test/www/domain2.lan
     ssl:
       cert_file: test/ssl/domain2.lan/fullchain.pem
       key_file: test/ssl/domain2.lan/privkey.pem
