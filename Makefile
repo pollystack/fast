@@ -13,19 +13,19 @@ all: linux darwin windows
 
 linux:
 	@echo "Building $(BINARY_NAME) for Linux..."
-	@cd $(CODE_DIR) && go get -d -v && \
+	@cd $(CODE_DIR) && go get -v && \
 	mkdir -p $(BUILD_DIR) && \
 	GOOS=linux go build -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 
 darwin:
 	@echo "Building $(BINARY_NAME) for macOS..."
-	@cd $(CODE_DIR) && go get -d -v && \
+	@cd $(CODE_DIR) && go get -v && \
 	mkdir -p $(BUILD_DIR) && \
 	GOOS=darwin go build -o $(BUILD_DIR)/$(BINARY_NAME)-darwin main.go
 
 windows:
 	@echo "Building $(BINARY_NAME) for Windows..."
-	@cd $(CODE_DIR) && go get -d -v && \
+	@cd $(CODE_DIR) && go get -v && \
 	mkdir -p $(BUILD_DIR) && \
 	GOOS=windows go build -o $(BUILD_DIR)/$(BINARY_NAME)-windows.exe main.go
 
