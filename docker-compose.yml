@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  fast-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Configuration from root directory
+      - ./config.yaml:/etc/fast/config.yaml:ro
+
+      # SSL certificates from root ssl directory
+      - ./ssl:/etc/fast/ssl:ro
+
+      # Web content from root www directory
+      - ./www:/var/www/fast
+
+      # Logs to root logs directory
+      - ./logs:/var/log/fast
+    environment:
+      - GO_ENV=production
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+volumes:
+  logs:
+    driver: local

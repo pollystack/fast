@@ -5,14 +5,15 @@ import (
 	"fast/config"
 	"fast/handlers"
 	"fmt"
+	"github.com/labstack/echo/v4/middleware"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 type Server struct {
@@ -38,28 +39,50 @@ func New(cfg *config.Config) *Server {
 	e := echo.New()
 
 	// Initialize and set the renderer with custom functions
-	renderer := &TemplateRenderer{
-		templates: template.Must(template.New("").Funcs(template.FuncMap{
-			"splitPath": func(path string) []string {
-				// Remove leading and trailing slashes
-				path = strings.Trim(path, "/")
-				if path == "" {
-					return []string{}
-				}
-				return strings.Split(path, "/")
-			},
-			"joinPath": func(base, path string) string {
-				if base == "" {
-					return "/" + path
-				}
-				return base + "/" + path
-			},
-			"lastIndex": func(arr []string) int {
-				return len(arr) - 1
-			},
-		}).ParseGlob("templates/*.html")),
+	tmpl := template.New("")
+
+	// Add custom functions
+	tmpl = tmpl.Funcs(template.FuncMap{
+		"splitPath": func(path string) []string {
+			path = strings.Trim(path, "/")
+			if path == "" {
+				return []string{}
+			}
+			return strings.Split(path, "/")
+		},
+		"joinPath": func(base, path string) string {
+			if base == "" {
+				return "/" + path
+			}
+			return base + "/" + path
+		},
+		"lastIndex": func(arr []string) int {
+			return len(arr) - 1
+		},
+	})
+
+	// Parse embedded templates
+	templates, err := fs.ReadDir(templateFiles, "templates")
+	if err != nil {
+		log.Fatalf("Failed to read templates: %v", err)
 	}
-	e.Renderer = renderer
+
+	for _, entry := range templates {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".html") {
+			templateContent, err := templateFiles.ReadFile("templates/" + entry.Name())
+			if err != nil {
+				log.Fatalf("Failed to read template %s: %v", entry.Name(), err)
+			}
+			_, err = tmpl.New(entry.Name()).Parse(string(templateContent))
+			if err != nil {
+				log.Fatalf("Failed to parse template %s: %v", entry.Name(), err)
+			}
+		}
+	}
+
+	e.Renderer = &TemplateRenderer{
+		templates: tmpl,
+	}
 
 	// Middleware
 	e.Use(middleware.Logger())

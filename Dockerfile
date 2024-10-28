@@ -4,11 +4,14 @@ FROM golang:1.21-alpine as builder
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the entire project
-COPY fast-server .
+# Copy go.mod and go.sum first (from fast-server directory)
+COPY fast-server/go.mod fast-server/go.sum ./
 
-# Download all dependencies (this will create go.sum if it doesn't exist)
+# Download dependencies
 RUN go mod download
+
+# Copy the entire fast-server directory
+COPY fast-server/ .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o fast_server .
@@ -19,12 +22,12 @@ FROM alpine:latest
 # Install ca-certificates
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+WORKDIR /app
 
-# Copy the pre-built binary file from the previous stage
+# Copy the pre-built binary
 COPY --from=builder /app/fast_server .
 
-# Copy the config file
+# Copy the config file from root directory
 COPY config.yaml.example /etc/fast/config.yaml
 
 # Create necessary directories
