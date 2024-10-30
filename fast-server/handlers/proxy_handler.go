@@ -12,14 +12,13 @@ import (
 )
 
 func HandleProxy(c echo.Context, domain config.Domain) error {
-
-	// Determine scheme based on request
-	scheme := "http"
-	if c.Request().TLS != nil {
-		scheme = "https"
+	// Determine target scheme from config
+	targetScheme := domain.Proxy.Protocol
+	if targetScheme == "" {
+		targetScheme = "http" // Default to HTTP if not specified
 	}
 
-	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", scheme, domain.Proxy.Host, domain.Proxy.Port))
+	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", targetScheme, domain.Proxy.Host, domain.Proxy.Port))
 	if err != nil {
 		c.Logger().Errorf("Error parsing proxy URL: %v", err)
 		return echo.ErrInternalServerError
@@ -34,7 +33,7 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			MaxVersion:         tls.VersionTLS13,
-			InsecureSkipVerify: true, // Disabled for Proxy
+			InsecureSkipVerify: domain.Proxy.InsecureSkipVerify,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -52,6 +51,12 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		DisableCompression:    false,
 	}
 
+	// Get original scheme
+	sourceScheme := "http"
+	if c.Request().TLS != nil {
+		sourceScheme = "https"
+	}
+
 	proxyMiddleware := middleware.ProxyWithConfig(middleware.ProxyConfig{
 		Balancer: middleware.NewRoundRobinBalancer([]*middleware.ProxyTarget{
 			{
@@ -62,26 +67,22 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 			"/*": "/$1",
 		},
 		Transport: transport,
+		ModifyResponse: func(res *http.Response) error {
+			// Optional: Modify response headers here if needed
+			return nil
+		},
 	})
 
-	// Set proxy headers before proxying the request
+	// Set proxy headers
 	c.Request().Header.Set("X-Forwarded-Host", originalHost)
 	c.Request().Header.Set("X-Real-IP", c.RealIP())
 	c.Request().Header.Set("X-Forwarded-For", c.RealIP())
-	c.Request().Header.Set("X-Forwarded-Proto", scheme)
+	c.Request().Header.Set("X-Forwarded-Proto", sourceScheme)
 
-	// Important: Keep the original host for the second FAST server
+	// Keep original host
 	c.Request().Host = originalHost
 
-	// Execute the proxy middleware
-	err = proxyMiddleware(func(c echo.Context) error {
+	return proxyMiddleware(func(c echo.Context) error {
 		return nil
 	})(c)
-
-	if err != nil {
-		c.Logger().Errorf("Proxy error: %v", err)
-		return err
-	}
-
-	return nil
 }
