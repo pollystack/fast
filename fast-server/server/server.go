@@ -159,7 +159,7 @@ func (s *Server) setupRoutes() {
 	})
 
 	// Root handler
-	s.echo.GET("/", func(c echo.Context) error {
+	s.echo.Any("/", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
 		case "proxy":
@@ -172,7 +172,7 @@ func (s *Server) setupRoutes() {
 	})
 
 	// Catch-all handler
-	s.echo.GET("/*", func(c echo.Context) error {
+	s.echo.Any("/*", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
 		case "proxy":
@@ -183,6 +183,7 @@ func (s *Server) setupRoutes() {
 			return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
 		}
 	})
+
 }
 
 func (s *Server) setupTLSConfig() (*tls.Config, error) {
