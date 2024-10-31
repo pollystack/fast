@@ -159,7 +159,7 @@ func (s *Server) setupRoutes() {
 	})
 
 	// Root handler
-	s.echo.GET("/", func(c echo.Context) error {
+	s.echo.Any("/", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
 		case "proxy":
