@@ -158,8 +158,8 @@ func (s *Server) setupRoutes() {
 		}
 	})
 
-	// Root handler - change GET to Any
-	s.echo.Any("/", func(c echo.Context) error {
+	// Root handler
+	s.echo.GET("/", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
 		case "proxy":
@@ -171,7 +171,7 @@ func (s *Server) setupRoutes() {
 		}
 	})
 
-	// Catch-all handler - change GET to Any
+	// Catch-all handler
 	s.echo.Any("/*", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
@@ -183,31 +183,6 @@ func (s *Server) setupRoutes() {
 			return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
 		}
 	})
-}
-
-// Split handlers into separate functions for clarity
-func handleRoot(c echo.Context) error {
-	domain := c.Get("domain").(config.Domain)
-	switch domain.Type {
-	case "proxy":
-		return handlers.HandleProxy(c, domain)
-	case "file_directory":
-		return handlers.HandleFileDirectory(c, domain)
-	default:
-		return handlers.ServeIndexOrFile(c, domain.PublicDir, "index.html")
-	}
-}
-
-func handlePath(c echo.Context) error {
-	domain := c.Get("domain").(config.Domain)
-	switch domain.Type {
-	case "proxy":
-		return handlers.HandleProxy(c, domain)
-	case "file_directory":
-		return handlers.HandleFileDirectory(c, domain)
-	default:
-		return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
-	}
 }
 
 func (s *Server) setupTLSConfig() (*tls.Config, error) {
