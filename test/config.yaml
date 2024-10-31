@@ -23,8 +23,8 @@ domains:
       host: 127.0.0.1
       port: 8000
     ssl:
-      cert_file: /etc/fast/ssl/domain2.lan/fullchain.pem
-      key_file: /etc/fast/ssl/domain2.lan/privkey.pem
+      cert_file: /etc/fast/ssl/domain3.lan/fullchain.pem
+      key_file: /etc/fast/ssl/domain3.lan/privkey.pem
 
 global_ssl:
   cert_file: /etc/fast/ssl/global/fullchain.pem

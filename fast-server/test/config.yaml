@@ -26,6 +26,17 @@ domains:
       cert_file: test/ssl/domain2.lan/fullchain.pem
       key_file: test/ssl/domain2.lan/privkey.pem
 
+  - name: domain3.lan
+    type: proxy
+    proxy:
+      protocol: http
+      insecure_skip_verify: true
+      host: 0.0.0.0
+      port: 8000
+    ssl:
+      cert_file: test/ssl/domain3.lan/fullchain.pem
+      key_file: test/ssl/domain3.lan/privkey.pem
+
 global_ssl:
   cert_file: test/ssl/global/fullchain.pem
   key_file: test/ssl/global/privkey.pem
