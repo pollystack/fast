@@ -127,38 +127,33 @@ func (s *Server) setupRoutes() {
 		domainMap[domain.Name] = domain
 	}
 
-	// Single middleware to handle all domains
+	// Method logging middleware
 	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			host := c.Request().Host
-			if strings.Contains(host, ":") {
-				host = strings.Split(host, ":")[0]
-			}
-			log.Printf("Incoming request for host: %s", host)
+			// List of allowed methods
+			allowedMethods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
+			method := c.Request().Method
 
-			var matchedDomain config.Domain
-			var matchedName string
-			for domainName, domain := range domainMap {
-				if strings.HasSuffix(host, domainName) {
-					if len(domainName) > len(matchedName) {
-						matchedDomain = domain
-						matchedName = domainName
-					}
+			methodAllowed := false
+			for _, m := range allowedMethods {
+				if method == m {
+					methodAllowed = true
+					break
 				}
 			}
 
-			if matchedName == "" {
-				log.Printf("No matching domain found for host: %s", host)
-				return echo.ErrNotFound
+			if !methodAllowed {
+				s.echo.Logger.Warnf("Blocked request: Method %s not allowed for path %s from IP %s",
+					method, c.Request().URL.Path, c.RealIP())
+				return echo.NewHTTPError(http.StatusMethodNotAllowed,
+					fmt.Sprintf("Method %s is not allowed", method))
 			}
 
-			log.Printf("Matched domain: %s", matchedName)
-			c.Set("domain", matchedDomain)
 			return next(c)
 		}
 	})
 
-	// Root handler
+	// Use Any() instead of GET() to allow all methods that pass the middleware
 	s.echo.Any("/", func(c echo.Context) error {
 		domain := c.Get("domain").(config.Domain)
 		switch domain.Type {
