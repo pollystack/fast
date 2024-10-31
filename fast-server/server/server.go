@@ -127,58 +127,77 @@ func (s *Server) setupRoutes() {
 		domainMap[domain.Name] = domain
 	}
 
-	// Method logging middleware
+	// Domain middleware
 	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// List of allowed methods
-			allowedMethods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
-			method := c.Request().Method
+			host := c.Request().Host
+			if strings.Contains(host, ":") {
+				host = strings.Split(host, ":")[0]
+			}
+			s.echo.Logger.Infof("Incoming request for host: %s", host)
 
-			methodAllowed := false
-			for _, m := range allowedMethods {
-				if method == m {
-					methodAllowed = true
-					break
+			var matchedDomain config.Domain
+			var matchedName string
+			for domainName, domain := range domainMap {
+				if strings.HasSuffix(host, domainName) {
+					if len(domainName) > len(matchedName) {
+						matchedDomain = domain
+						matchedName = domainName
+					}
 				}
 			}
 
-			if !methodAllowed {
-				s.echo.Logger.Warnf("Blocked request: Method %s not allowed for path %s from IP %s",
-					method, c.Request().URL.Path, c.RealIP())
-				return echo.NewHTTPError(http.StatusMethodNotAllowed,
-					fmt.Sprintf("Method %s is not allowed", method))
+			if matchedName == "" {
+				s.echo.Logger.Warnf("No matching domain found for host: %s", host)
+				return echo.ErrNotFound
 			}
 
+			s.echo.Logger.Infof("Matched domain: %s (type: %s)", matchedName, matchedDomain.Type)
+			c.Set("domain", matchedDomain) // Set the domain in context
 			return next(c)
 		}
 	})
 
-	// Use Any() instead of GET() to allow all methods that pass the middleware
-	s.echo.Any("/", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
-		switch domain.Type {
-		case "proxy":
-			return handlers.HandleProxy(c, domain)
-		case "file_directory":
-			return handlers.HandleFileDirectory(c, domain)
-		default:
-			return handlers.ServeIndexOrFile(c, domain.PublicDir, "index.html")
+	// Add safety check middleware
+	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			_, ok := c.Get("domain").(config.Domain)
+			if !ok {
+				s.echo.Logger.Errorf("Domain not found in context for host: %s", c.Request().Host)
+				return echo.ErrInternalServerError
+			}
+			return next(c)
 		}
 	})
 
-	// Catch-all handler
-	s.echo.Any("/*", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
-		switch domain.Type {
-		case "proxy":
-			return handlers.HandleProxy(c, domain)
-		case "file_directory":
-			return handlers.HandleFileDirectory(c, domain)
-		default:
-			return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
-		}
-	})
+	// Root and catch-all handlers
+	s.echo.Any("/", handleRoot)
+	s.echo.Any("/*", handlePath)
+}
 
+// Split handlers into separate functions for clarity
+func handleRoot(c echo.Context) error {
+	domain := c.Get("domain").(config.Domain)
+	switch domain.Type {
+	case "proxy":
+		return handlers.HandleProxy(c, domain)
+	case "file_directory":
+		return handlers.HandleFileDirectory(c, domain)
+	default:
+		return handlers.ServeIndexOrFile(c, domain.PublicDir, "index.html")
+	}
+}
+
+func handlePath(c echo.Context) error {
+	domain := c.Get("domain").(config.Domain)
+	switch domain.Type {
+	case "proxy":
+		return handlers.HandleProxy(c, domain)
+	case "file_directory":
+		return handlers.HandleFileDirectory(c, domain)
+	default:
+		return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
+	}
 }
 
 func (s *Server) setupTLSConfig() (*tls.Config, error) {
