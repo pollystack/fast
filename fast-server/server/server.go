@@ -127,14 +127,14 @@ func (s *Server) setupRoutes() {
 		domainMap[domain.Name] = domain
 	}
 
-	// Domain middleware
+	// Single middleware to handle all domains
 	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			host := c.Request().Host
 			if strings.Contains(host, ":") {
 				host = strings.Split(host, ":")[0]
 			}
-			s.echo.Logger.Infof("Incoming request for host: %s", host)
+			log.Printf("Incoming request for host: %s", host)
 
 			var matchedDomain config.Domain
 			var matchedName string
@@ -148,31 +148,41 @@ func (s *Server) setupRoutes() {
 			}
 
 			if matchedName == "" {
-				s.echo.Logger.Warnf("No matching domain found for host: %s", host)
+				log.Printf("No matching domain found for host: %s", host)
 				return echo.ErrNotFound
 			}
 
-			s.echo.Logger.Infof("Matched domain: %s (type: %s)", matchedName, matchedDomain.Type)
-			c.Set("domain", matchedDomain) // Set the domain in context
+			log.Printf("Matched domain: %s", matchedName)
+			c.Set("domain", matchedDomain)
 			return next(c)
 		}
 	})
 
-	// Add safety check middleware
-	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			_, ok := c.Get("domain").(config.Domain)
-			if !ok {
-				s.echo.Logger.Errorf("Domain not found in context for host: %s", c.Request().Host)
-				return echo.ErrInternalServerError
-			}
-			return next(c)
+	// Root handler - change GET to Any
+	s.echo.Any("/", func(c echo.Context) error {
+		domain := c.Get("domain").(config.Domain)
+		switch domain.Type {
+		case "proxy":
+			return handlers.HandleProxy(c, domain)
+		case "file_directory":
+			return handlers.HandleFileDirectory(c, domain)
+		default:
+			return handlers.ServeIndexOrFile(c, domain.PublicDir, "index.html")
 		}
 	})
 
-	// Root and catch-all handlers
-	s.echo.Any("/", handleRoot)
-	s.echo.Any("/*", handlePath)
+	// Catch-all handler - change GET to Any
+	s.echo.Any("/*", func(c echo.Context) error {
+		domain := c.Get("domain").(config.Domain)
+		switch domain.Type {
+		case "proxy":
+			return handlers.HandleProxy(c, domain)
+		case "file_directory":
+			return handlers.HandleFileDirectory(c, domain)
+		default:
+			return handlers.ServeIndexOrFile(c, domain.PublicDir, c.Request().URL.Path)
+		}
+	})
 }
 
 // Split handlers into separate functions for clarity
