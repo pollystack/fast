@@ -94,32 +94,6 @@ func New(cfg *config.Config) *Server {
 	}
 }
 
-func (s *Server) Start() error {
-	s.echo.Logger.Info("Setting up routes for domains:")
-	for _, domain := range s.config.Domains {
-		s.echo.Logger.Infof("  - %s (Type: %s, Public Dir: %s)", domain.Name, domain.Type, domain.PublicDir)
-	}
-	s.setupRoutes()
-
-	// Setup TLS config
-	tlsConfig, err := s.setupTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to setup TLS config: %v", err)
-	}
-
-	// Start HTTP to HTTPS redirect
-	go s.startHTTPRedirect()
-
-	// Create custom server
-	server := &http.Server{
-		Addr:      fmt.Sprintf(":%d", s.config.Server.Port),
-		TLSConfig: tlsConfig,
-	}
-
-	// Start HTTPS server
-	return s.echo.StartServer(server)
-}
-
 func (s *Server) setupRoutes() {
 	// Create a map for quick domain lookup
 	domainMap := make(map[string]config.Domain)
@@ -251,13 +225,40 @@ func (s *Server) setupTLSConfig() (*tls.Config, error) {
 	}, nil
 }
 
+func (s *Server) Start() error {
+	s.echo.Logger.Info("Setting up routes for domains:")
+	for _, domain := range s.config.Domains {
+		s.echo.Logger.Infof("  - %s (Type: %s, Public Dir: %s)", domain.Name, domain.Type, domain.PublicDir)
+	}
+	s.setupRoutes()
+
+	tlsConfig, err := s.setupTLSConfig()
+	if err != nil {
+		return fmt.Errorf("failed to setup TLS config: %v", err)
+	}
+
+	server := &http.Server{
+		// Force IPv4
+		Addr:      fmt.Sprintf("0.0.0.0:%d", s.config.Server.Port),
+		TLSConfig: tlsConfig,
+	}
+
+	// Start HTTP to HTTPS redirect
+	go s.startHTTPRedirect()
+
+	s.echo.Logger.Infof("Starting HTTPS server on port %d (IPv4)", s.config.Server.Port)
+	return s.echo.StartServer(server)
+}
+
 func (s *Server) startHTTPRedirect() {
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.Server.HTTPPort),
+		// Force IPv4
+		Addr: fmt.Sprintf("0.0.0.0:%d", s.config.Server.HTTPPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "https://"+r.Host+r.URL.String(), http.StatusMovedPermanently)
 		}),
 	}
+	s.echo.Logger.Infof("Starting HTTP redirect server on port %d (IPv4)", s.config.Server.HTTPPort)
 	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
 		s.echo.Logger.Fatal(err)
 	}
