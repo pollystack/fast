@@ -19,8 +19,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o fast_server .
 # Start a new stage from scratch
 FROM alpine:latest
 
-# Install ca-certificates
-RUN apk --no-cache add ca-certificates
+# Install necessary packages
+RUN apk --no-cache add \
+    ca-certificates \
+    curl \
+    wget \
+    netcat-openbsd
 
 WORKDIR /app
 
