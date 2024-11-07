@@ -8,32 +8,60 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
-func HandleProxy(c echo.Context, domain config.Domain) error {
-	// Determine target scheme from config
-	targetScheme := domain.Proxy.Protocol
-	if targetScheme == "" {
-		targetScheme = "http" // Default to HTTP if not specified
+func getMatchingLocation(path string, locations []config.Location) *config.Location {
+	var bestMatch *config.Location
+	var bestLen int
+
+	for i, loc := range locations {
+		if strings.HasPrefix(path, loc.Path) {
+			pathLen := len(loc.Path)
+			if bestMatch == nil || pathLen > bestLen {
+				bestMatch = &locations[i]
+				bestLen = pathLen
+			}
+		}
 	}
 
-	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", targetScheme, domain.Proxy.Host, domain.Proxy.Port))
+	return bestMatch
+}
+
+func HandleProxy(c echo.Context, domain config.Domain) error {
+	requestPath := c.Request().URL.Path
+
+	// Get matching location
+	location := getMatchingLocation(requestPath, domain.Locations)
+	if location == nil {
+		c.Logger().Errorf("No matching location found for path: %s", requestPath)
+		return echo.ErrNotFound
+	}
+
+	// Use location's proxy config
+	proxyConfig := location.Proxy
+	targetScheme := proxyConfig.Protocol
+	if targetScheme == "" {
+		targetScheme = "http"
+	}
+
+	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", targetScheme, proxyConfig.Host, proxyConfig.Port))
 	if err != nil {
 		c.Logger().Errorf("Error parsing proxy URL: %v", err)
 		return echo.ErrInternalServerError
 	}
 
 	originalHost := c.Request().Host
-	c.Logger().Infof("Proxying %s request from %s to %s",
-		c.Request().Method, originalHost, target.String())
+	c.Logger().Infof("Proxying %s request from %s to %s (location: %s)",
+		c.Request().Method, originalHost, target.String(), location.Path)
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			MaxVersion:         tls.VersionTLS13,
-			InsecureSkipVerify: domain.Proxy.InsecureSkipVerify,
+			InsecureSkipVerify: proxyConfig.InsecureSkipVerify,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -51,10 +79,14 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		DisableCompression:    false,
 	}
 
-	// Get original scheme
 	sourceScheme := "http"
 	if c.Request().TLS != nil {
 		sourceScheme = "https"
+	}
+
+	// Strip the location path prefix for the upstream request
+	rewriteMap := map[string]string{
+		location.Path + "*": "/$1",
 	}
 
 	proxyMiddleware := middleware.ProxyWithConfig(middleware.ProxyConfig{
@@ -63,12 +95,9 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 				URL: target,
 			},
 		}),
-		Rewrite: map[string]string{
-			"/*": "/$1",
-		},
+		Rewrite:   rewriteMap,
 		Transport: transport,
 		ModifyResponse: func(res *http.Response) error {
-			// Optional: Modify response headers here if needed
 			return nil
 		},
 	})
@@ -78,8 +107,6 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	c.Request().Header.Set("X-Real-IP", c.RealIP())
 	c.Request().Header.Set("X-Forwarded-For", c.RealIP())
 	c.Request().Header.Set("X-Forwarded-Proto", sourceScheme)
-
-	// Keep original host
 	c.Request().Host = originalHost
 
 	return proxyMiddleware(func(c echo.Context) error {

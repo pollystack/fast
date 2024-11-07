@@ -53,17 +53,39 @@ func (s *SSLConfig) validate() error {
 	return nil
 }
 
+type Location struct {
+	Path  string      `yaml:"path"`
+	Proxy ProxyConfig `yaml:"proxy"`
+}
+
 type Domain struct {
 	Name      string      `yaml:"name"`
 	Type      string      `yaml:"type"`
 	PublicDir string      `yaml:"public_dir"`
 	Proxy     ProxyConfig `yaml:"proxy"`
 	SSL       SSLConfig   `yaml:"ssl"`
+	Locations []Location  `yaml:"locations,omitempty"` // Add this line
 }
 
 func (d *Domain) setDefaults() {
 	if d.Type == "proxy" {
+		// Set default for main proxy config
 		d.Proxy.setDefaults()
+
+		// If no locations provided, create default "/" location with main proxy config
+		if len(d.Locations) == 0 {
+			d.Locations = []Location{
+				{
+					Path:  "/",
+					Proxy: d.Proxy,
+				},
+			}
+		} else {
+			// Set defaults for all provided locations
+			for i := range d.Locations {
+				d.Locations[i].Proxy.setDefaults()
+			}
+		}
 	}
 }
 
@@ -81,14 +103,17 @@ func (d *Domain) validate() error {
 		return fmt.Errorf("invalid domain type: %s", d.Type)
 	}
 
-	if d.Type != "proxy" && d.PublicDir == "" {
-		return fmt.Errorf("public_dir is required for type: %s", d.Type)
-	}
-
 	if d.Type == "proxy" {
-		if err := d.Proxy.validate(); err != nil {
-			return fmt.Errorf("proxy configuration error for %s: %v", d.Name, err)
+		for _, loc := range d.Locations {
+			if loc.Path == "" {
+				return fmt.Errorf("location path cannot be empty")
+			}
+			if err := loc.Proxy.validate(); err != nil {
+				return fmt.Errorf("proxy configuration error for location %s: %v", loc.Path, err)
+			}
 		}
+	} else if d.PublicDir == "" {
+		return fmt.Errorf("public_dir is required for type: %s", d.Type)
 	}
 
 	return d.SSL.validate()

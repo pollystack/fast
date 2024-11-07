@@ -45,10 +45,10 @@ func SetupDomainRoutes(e *echo.Echo, domains []config.Domain) {
 	})
 
 	// Root handler
-	e.GET("/", handleRequest)
+	e.Any("/", handleRequest)
 
 	// Catch-all handler
-	e.GET("/*", handleRequest)
+	e.Any("/*", handleRequest)
 }
 
 func handleRequest(c echo.Context) error {
