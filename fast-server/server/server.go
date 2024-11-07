@@ -113,7 +113,17 @@ func (s *Server) setupRoutes() {
 			var matchedDomain config.Domain
 			var matchedName string
 			for domainName, domain := range domainMap {
-				if strings.HasSuffix(host, domainName) {
+				// Handle wildcard domains
+				if strings.HasPrefix(domainName, "*.") {
+					suffix := domainName[1:] // Remove the *
+					if strings.HasSuffix(host, suffix) {
+						if len(suffix) > len(matchedName) {
+							matchedDomain = domain
+							matchedName = suffix
+						}
+					}
+				} else if strings.HasSuffix(host, domainName) {
+					// Handle exact domain matches
 					if len(domainName) > len(matchedName) {
 						matchedDomain = domain
 						matchedName = domainName
