@@ -8,25 +8,27 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
 
 func getMatchingLocation(path string, locations []config.Location) *config.Location {
-	var bestMatch *config.Location
-	var bestLen int
+	// Sort locations by path length in descending order (longest first)
+	sortedLocations := make([]config.Location, len(locations))
+	copy(sortedLocations, locations)
+	sort.Slice(sortedLocations, func(i, j int) bool {
+		return len(sortedLocations[i].Path) > len(sortedLocations[j].Path)
+	})
 
-	for i, loc := range locations {
+	// Find the first matching location
+	for i, loc := range sortedLocations {
 		if strings.HasPrefix(path, loc.Path) {
-			pathLen := len(loc.Path)
-			if bestMatch == nil || pathLen > bestLen {
-				bestMatch = &locations[i]
-				bestLen = pathLen
-			}
+			return &sortedLocations[i]
 		}
 	}
 
-	return bestMatch
+	return nil
 }
 
 func HandleProxy(c echo.Context, domain config.Domain) error {
