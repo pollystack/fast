@@ -33,6 +33,7 @@ func getMatchingLocation(path string, locations []config.Location) *config.Locat
 
 func HandleProxy(c echo.Context, domain config.Domain) error {
 	requestPath := c.Request().URL.Path
+	c.Logger().Infof("Original request path: %s", requestPath)
 
 	// Get matching location
 	location := getMatchingLocation(requestPath, domain.Locations)
@@ -40,6 +41,8 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		c.Logger().Errorf("No matching location found for path: %s", requestPath)
 		return echo.ErrNotFound
 	}
+
+	c.Logger().Infof("Matched location path: %s", location.Path)
 
 	// Use location's proxy config
 	proxyConfig := location.Proxy
@@ -55,8 +58,22 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	}
 
 	originalHost := c.Request().Host
-	c.Logger().Infof("Proxying %s request from %s to %s (location: %s)",
-		c.Request().Method, originalHost, target.String(), location.Path)
+
+	// Set up the rewrite rules
+	var rewriteMap map[string]string
+	if location.Path == "/" {
+		rewriteMap = map[string]string{
+			"/*": "/$1",
+		}
+	} else {
+		rewriteMap = map[string]string{
+			location.Path + "/*": location.Path + "/$1",
+		}
+	}
+
+	c.Logger().Infof("Using rewrite map: %v", rewriteMap)
+	c.Logger().Infof("Proxying %s request from %s to %s%s",
+		c.Request().Method, originalHost, target.String(), requestPath)
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -78,17 +95,13 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 		DisableCompression:    false,
 	}
 
 	sourceScheme := "http"
 	if c.Request().TLS != nil {
 		sourceScheme = "https"
-	}
-
-	// Strip the location path prefix for the upstream request
-	rewriteMap := map[string]string{
-		location.Path + "*": "/$1",
 	}
 
 	proxyMiddleware := middleware.ProxyWithConfig(middleware.ProxyConfig{
@@ -100,6 +113,7 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		Rewrite:   rewriteMap,
 		Transport: transport,
 		ModifyResponse: func(res *http.Response) error {
+			c.Logger().Infof("Proxy response status: %d for path: %s", res.StatusCode, requestPath)
 			return nil
 		},
 	})
@@ -109,6 +123,7 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	c.Request().Header.Set("X-Real-IP", c.RealIP())
 	c.Request().Header.Set("X-Forwarded-For", c.RealIP())
 	c.Request().Header.Set("X-Forwarded-Proto", sourceScheme)
+	c.Request().Header.Set("X-Original-URI", requestPath)
 	c.Request().Host = originalHost
 
 	return proxyMiddleware(func(c echo.Context) error {
