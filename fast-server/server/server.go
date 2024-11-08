@@ -95,6 +95,13 @@ func New(cfg *config.Config) *Server {
 }
 
 func (s *Server) setupRoutes() {
+	// Add health check endpoint before domain middleware
+	s.echo.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+	})
+
 	// Create a map for quick domain lookup
 	domainMap := make(map[string]config.Domain)
 	for _, domain := range s.config.Domains {
@@ -104,6 +111,11 @@ func (s *Server) setupRoutes() {
 	// Single middleware to handle all domains
 	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// Skip domain check for health check endpoint
+			if c.Request().URL.Path == "/health" {
+				return next(c)
+			}
+
 			host := c.Request().Host
 			if strings.Contains(host, ":") {
 				host = strings.Split(host, ":")[0]

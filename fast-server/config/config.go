@@ -116,12 +116,75 @@ func (d *Domain) validate() error {
 		return fmt.Errorf("public_dir is required for type: %s", d.Type)
 	}
 
+	// Always validate SSL for the regular validate method
 	return d.SSL.validate()
 }
 
+func (c *Config) validate() error {
+	if err := c.Server.validate(); err != nil {
+		return fmt.Errorf("server configuration error: %v", err)
+	}
+
+	if err := c.Log.validate(); err != nil {
+		return fmt.Errorf("log configuration error: %v", err)
+	}
+
+	if len(c.Domains) == 0 {
+		return fmt.Errorf("at least one domain must be configured")
+	}
+
+	for _, domain := range c.Domains {
+		// Only require SSL validation if we're running on HTTPS port
+		if c.Server.IsHTTPS {
+			if err := domain.validate(); err != nil {
+				return fmt.Errorf("domain %s configuration error: %v", domain.Name, err)
+			}
+		} else {
+			// Skip SSL validation for non-HTTPS servers
+			if err := domain.validateWithoutSSL(); err != nil {
+				return fmt.Errorf("domain %s configuration error: %v", domain.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Add this new method to Domain
+func (d *Domain) validateWithoutSSL() error {
+	if d.Name == "" {
+		return fmt.Errorf("domain name cannot be empty")
+	}
+
+	validTypes := map[string]bool{
+		"static":         true,
+		"proxy":          true,
+		"file_directory": true,
+	}
+	if !validTypes[d.Type] {
+		return fmt.Errorf("invalid domain type: %s", d.Type)
+	}
+
+	if d.Type == "proxy" {
+		for _, loc := range d.Locations {
+			if loc.Path == "" {
+				return fmt.Errorf("location path cannot be empty")
+			}
+			if err := loc.Proxy.validate(); err != nil {
+				return fmt.Errorf("proxy configuration error for location %s: %v", loc.Path, err)
+			}
+		}
+	} else if d.PublicDir == "" {
+		return fmt.Errorf("public_dir is required for type: %s", d.Type)
+	}
+
+	return nil
+}
+
 type ServerConfig struct {
-	Port     int `yaml:"port"`
-	HTTPPort int `yaml:"http_port"`
+	Port     int  `yaml:"port"`
+	HTTPPort int  `yaml:"http_port"`
+	IsHTTPS  bool `yaml:"-"`
 }
 
 func (s *ServerConfig) setDefaults() {
@@ -131,6 +194,7 @@ func (s *ServerConfig) setDefaults() {
 	if s.HTTPPort == 0 {
 		s.HTTPPort = 80
 	}
+	s.IsHTTPS = s.Port == 443
 }
 
 func (s *ServerConfig) validate() error {
@@ -197,28 +261,6 @@ func (c *Config) setDefaults() {
 	if c.Settings.GracefulShutdownTimeout == "" {
 		c.Settings.GracefulShutdownTimeout = "30s"
 	}
-}
-
-func (c *Config) validate() error {
-	if err := c.Server.validate(); err != nil {
-		return fmt.Errorf("server configuration error: %v", err)
-	}
-
-	if err := c.Log.validate(); err != nil {
-		return fmt.Errorf("log configuration error: %v", err)
-	}
-
-	if len(c.Domains) == 0 {
-		return fmt.Errorf("at least one domain must be configured")
-	}
-
-	for _, domain := range c.Domains {
-		if err := domain.validate(); err != nil {
-			return fmt.Errorf("domain %s configuration error: %v", domain.Name, err)
-		}
-	}
-
-	return nil
 }
 
 func isLaunchedByDebugger() bool {
