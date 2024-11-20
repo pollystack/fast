@@ -122,35 +122,29 @@ func (s *Server) setupRoutes() {
 			}
 			log.Printf("Incoming request for host: %s", host)
 
-			var matchedDomain config.Domain
-			var matchedName string
-			for domainName, domain := range domainMap {
-				// Handle wildcard domains
-				if strings.HasPrefix(domainName, "*.") {
-					suffix := domainName[1:] // Remove the *
+			// First try exact matches
+			for _, domain := range s.config.Domains {
+				if !strings.HasPrefix(domain.Name, "*.") && host == domain.Name {
+					log.Printf("Matched exact domain: %s", domain.Name)
+					c.Set("domain", domain)
+					return next(c)
+				}
+			}
+
+			// If no exact match found, try wildcard domains
+			for _, domain := range s.config.Domains {
+				if strings.HasPrefix(domain.Name, "*.") {
+					suffix := domain.Name[1:] // Remove the *
 					if strings.HasSuffix(host, suffix) {
-						if len(suffix) > len(matchedName) {
-							matchedDomain = domain
-							matchedName = suffix
-						}
-					}
-				} else if strings.HasSuffix(host, domainName) {
-					// Handle exact domain matches
-					if len(domainName) > len(matchedName) {
-						matchedDomain = domain
-						matchedName = domainName
+						log.Printf("Matched wildcard domain: %s", domain.Name)
+						c.Set("domain", domain)
+						return next(c)
 					}
 				}
 			}
 
-			if matchedName == "" {
-				log.Printf("No matching domain found for host: %s", host)
-				return echo.ErrNotFound
-			}
-
-			log.Printf("Matched domain: %s", matchedName)
-			c.Set("domain", matchedDomain)
-			return next(c)
+			log.Printf("No matching domain found for host: %s", host)
+			return echo.ErrNotFound
 		}
 	})
 
