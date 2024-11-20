@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fast/config"
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -191,10 +193,26 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		Rewrite:   rewriteMap,
 		Transport: transport,
 		ModifyResponse: func(res *http.Response) error {
-			c.Logger().Infof("[LoadBalancer] Response from %s: %d %s",
+			// Read and log the response body
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				c.Logger().Errorf("[LoadBalancer] Failed to read response body: %v", err)
+				return err
+			}
+			err = res.Body.Close()
+			if err != nil {
+				c.Logger().Errorf("[LoadBalancer] Failed to read response body: %v", err)
+				return err
+			}
+			// Create new ReadCloser for the body
+			res.Body = io.NopCloser(bytes.NewBuffer(body))
+
+			c.Logger().Infof("[LoadBalancer] Response from %s: %d %s, Content-Type: %s, Body: %s",
 				selectedHost,
 				res.StatusCode,
 				http.StatusText(res.StatusCode),
+				res.Header.Get("Content-Type"),
+				string(body),
 			)
 			return nil
 		},
