@@ -14,18 +14,11 @@ import (
 
 var ProductionConfigPath = "/etc/fast/config.yaml"
 
-const (
-	LoadBalanceMethodRoundRobin = "round_robin"
-	LoadBalanceMethodLeastConn  = "least_conn"
-)
-
 type ProxyConfig struct {
-	Host               string   `yaml:"host,omitempty"`
-	Hosts              []string `yaml:"hosts,omitempty"`
-	Port               int      `yaml:"port"`
-	Protocol           string   `yaml:"protocol,omitempty"`
-	InsecureSkipVerify bool     `yaml:"insecure_skip_verify,omitempty"`
-	LoadBalanceMethod  string   `yaml:"load_balance_method,omitempty"`
+	Host               string `yaml:"host"`
+	Port               int    `yaml:"port"`
+	Protocol           string `yaml:"protocol,omitempty"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify,omitempty"`
 }
 
 func (p *ProxyConfig) setDefaults() {
@@ -36,22 +29,14 @@ func (p *ProxyConfig) setDefaults() {
 }
 
 func (p *ProxyConfig) validate() error {
-	if p.Host == "" && len(p.Hosts) == 0 {
-		return fmt.Errorf("proxy host or hosts must be specified")
+	if p.Host == "" {
+		return fmt.Errorf("proxy host cannot be empty")
 	}
 	if p.Port <= 0 || p.Port > 65535 {
 		return fmt.Errorf("invalid proxy port: %d", p.Port)
 	}
 	if p.Protocol != "http" && p.Protocol != "https" {
 		return fmt.Errorf("invalid proxy protocol: %s", p.Protocol)
-	}
-	if p.LoadBalanceMethod != "" &&
-		p.LoadBalanceMethod != LoadBalanceMethodRoundRobin &&
-		p.LoadBalanceMethod != LoadBalanceMethodLeastConn {
-		return fmt.Errorf("invalid load balance method: %s, must be one of: %s, %s",
-			p.LoadBalanceMethod,
-			LoadBalanceMethodRoundRobin,
-			LoadBalanceMethodLeastConn)
 	}
 	return nil
 }
