@@ -54,8 +54,9 @@ func getLeastConnHost(hosts []string) string {
 	minConns := int64(math.MaxInt64)
 
 	for _, host := range hosts {
-		conns, _ := activeConnections.LoadOrStore(host, int64(0))
-		currentConns := conns.(int64)
+		// Initialize with 0 if not exists
+		connsValue, _ := activeConnections.LoadOrStore(host, int64(0))
+		currentConns := connsValue.(int64)
 		if currentConns < minConns {
 			minConns = currentConns
 			selectedHost = host
@@ -104,12 +105,15 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 
 	// Increment active connections for the selected host if using least_conn
 	if proxyConfig.LoadBalanceMethod == LoadBalanceMethodLeastConn {
-		var conns int64
-		actual, _ := activeConnections.LoadOrStore(selectedHost, &conns)
-		connPtr := actual.(*int64)
-		atomic.AddInt64(connPtr, 1)
-		defer atomic.AddInt64(connPtr, -1)
-		c.Logger().Debugf("Active connections for host %s: %d", selectedHost, atomic.LoadInt64(connPtr))
+		connsValue, _ := activeConnections.LoadOrStore(selectedHost, int64(0))
+		currentConns := connsValue.(int64)
+		activeConnections.Store(selectedHost, currentConns+1)
+		defer func() {
+			connsValue, _ := activeConnections.Load(selectedHost)
+			currentConns := connsValue.(int64)
+			activeConnections.Store(selectedHost, currentConns-1)
+		}()
+		c.Logger().Debugf("Active connections for host %s: %d", selectedHost, currentConns+1)
 	}
 
 	targetScheme := proxyConfig.Protocol
