@@ -59,21 +59,17 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 
 	originalHost := c.Request().Host
 
-	// Set up the rewrite rules
-	var rewriteMap map[string]string
+	// Create rewrite map based on location path
+	rewriteMap := make(map[string]string)
 	if location.Path == "/" {
-		rewriteMap = map[string]string{
-			"/*": "/$1",
-		}
+		rewriteMap["/*"] = "/$1"
 	} else {
-		rewriteMap = map[string]string{
-			location.Path + "/*": location.Path + "/$1",
-		}
+		rewriteMap[location.Path+"/*"] = location.Path + "/$1"
 	}
 
 	c.Logger().Infof("Using rewrite map: %v", rewriteMap)
-	c.Logger().Infof("Proxying %s request from %s to %s%s",
-		c.Request().Method, originalHost, target.String(), requestPath)
+	c.Logger().Infof("Proxying %s request from %s%s to %s%s",
+		c.Request().Method, originalHost, requestPath, target.String(), requestPath)
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
