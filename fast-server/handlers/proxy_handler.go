@@ -88,11 +88,14 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
+		IdleConnTimeout:       0, // Changed from 90s for streaming
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		ResponseHeaderTimeout: 0, // Changed from 30s for streaming
 		DisableCompression:    false,
+		DisableKeepAlives:     false,     // Added for streaming
+		ReadBufferSize:        64 * 1024, // Added for streaming (64KB)
+		WriteBufferSize:       64 * 1024, // Added for streaming (64KB)
 	}
 
 	sourceScheme := "http"

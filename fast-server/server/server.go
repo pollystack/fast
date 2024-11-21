@@ -254,9 +254,11 @@ func (s *Server) Start() error {
 	}
 
 	server := &http.Server{
-		// Force IPv4
-		Addr:      fmt.Sprintf("0.0.0.0:%d", s.config.Server.Port),
-		TLSConfig: tlsConfig,
+		Addr:         fmt.Sprintf("0.0.0.0:%d", s.config.Server.Port),
+		TLSConfig:    tlsConfig,
+		ReadTimeout:  0, // No timeout for streaming
+		WriteTimeout: 0, // No timeout for streaming
+		IdleTimeout:  0, // No timeout for streaming
 	}
 
 	// Start HTTP to HTTPS redirect

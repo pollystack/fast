@@ -253,10 +253,10 @@ func (c *Config) setDefaults() {
 	}
 
 	if c.Settings.ReadTimeout == "" {
-		c.Settings.ReadTimeout = "5s"
+		c.Settings.ReadTimeout = "0s" // Changed for streaming
 	}
 	if c.Settings.WriteTimeout == "" {
-		c.Settings.WriteTimeout = "10s"
+		c.Settings.WriteTimeout = "0s" // Changed for streaming
 	}
 	if c.Settings.GracefulShutdownTimeout == "" {
 		c.Settings.GracefulShutdownTimeout = "30s"
