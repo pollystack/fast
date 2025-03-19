@@ -45,13 +45,13 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	c.Logger().Infof("Matched location path: %s", location.Path)
 
 	// Use location's proxy config
-	proxyConfig := location.Proxy
-	targetScheme := proxyConfig.Protocol
+	locationProxyConfig := location.Proxy
+	targetScheme := locationProxyConfig.Protocol
 	if targetScheme == "" {
 		targetScheme = "http"
 	}
 
-	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", targetScheme, proxyConfig.Host, proxyConfig.Port))
+	target, err := url.Parse(fmt.Sprintf("%s://%s:%d", targetScheme, locationProxyConfig.Host, locationProxyConfig.Port))
 	if err != nil {
 		c.Logger().Errorf("Error parsing proxy URL: %v", err)
 		return echo.ErrInternalServerError
@@ -71,12 +71,23 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	c.Logger().Infof("Proxying %s request from %s%s to %s%s",
 		c.Request().Method, originalHost, requestPath, target.String(), requestPath)
 
+	// Check if this might be an SSE request based on Accept header or path hints
+	isSSE := false
+	acceptHeader := c.Request().Header.Get("Accept")
+	if acceptHeader == "text/event-stream" ||
+		strings.Contains(requestPath, "/events") ||
+		strings.Contains(requestPath, "/sse") ||
+		strings.Contains(requestPath, "/stream") {
+		isSSE = true
+		c.Logger().Infof("Detected potential SSE request, optimizing proxy settings")
+	}
+
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			MaxVersion:         tls.VersionTLS13,
-			InsecureSkipVerify: proxyConfig.InsecureSkipVerify,
+			InsecureSkipVerify: locationProxyConfig.InsecureSkipVerify,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -88,14 +99,14 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       0, // Changed from 90s for streaming
+		IdleConnTimeout:       0, // No timeout for streaming connections
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 0, // Changed from 30s for streaming
-		DisableCompression:    false,
-		DisableKeepAlives:     false,     // Added for streaming
-		ReadBufferSize:        64 * 1024, // Added for streaming (64KB)
-		WriteBufferSize:       64 * 1024, // Added for streaming (64KB)
+		ResponseHeaderTimeout: 0,     // No timeout for streaming responses
+		DisableCompression:    isSSE, // Disable compression for SSE
+		DisableKeepAlives:     false,
+		ReadBufferSize:        64 * 1024, // 64KB
+		WriteBufferSize:       64 * 1024, // 64KB
 	}
 
 	sourceScheme := "http"
@@ -103,7 +114,7 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		sourceScheme = "https"
 	}
 
-	proxyMiddleware := middleware.ProxyWithConfig(middleware.ProxyConfig{
+	proxyMiddlewareConfig := middleware.ProxyConfig{
 		Balancer: middleware.NewRoundRobinBalancer([]*middleware.ProxyTarget{
 			{
 				URL: target,
@@ -113,9 +124,25 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		Transport: transport,
 		ModifyResponse: func(res *http.Response) error {
 			c.Logger().Infof("Proxy response status: %d for path: %s", res.StatusCode, requestPath)
+
+			// If this is an SSE response, ensure proper headers are preserved
+			if res.Header.Get("Content-Type") == "text/event-stream" {
+				c.Logger().Info("SSE response detected, ensuring proper headers")
+
+				// Ensure these headers are preserved
+				res.Header.Set("Cache-Control", "no-cache")
+				res.Header.Set("Connection", "keep-alive")
+
+				// Remove any Content-Length header which would prevent streaming
+				res.Header.Del("Content-Length")
+
+				// Ensure chunked transfer encoding
+				res.TransferEncoding = []string{"chunked"}
+			}
+
 			return nil
 		},
-	})
+	}
 
 	// Set proxy headers
 	c.Request().Header.Set("X-Forwarded-Host", originalHost)
@@ -125,6 +152,14 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 	c.Request().Header.Set("X-Original-URI", requestPath)
 	c.Request().Host = originalHost
 
+	// If Content-Type indicates SSE, ensure appropriate client headers
+	if c.Request().Header.Get("Accept") == "text/event-stream" {
+		c.Response().Header().Set("Content-Type", "text/event-stream")
+		c.Response().Header().Set("Cache-Control", "no-cache")
+		c.Response().Header().Set("Connection", "keep-alive")
+	}
+
+	proxyMiddleware := middleware.ProxyWithConfig(proxyMiddlewareConfig)
 	return proxyMiddleware(func(c echo.Context) error {
 		return nil
 	})(c)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/tls"
+	"errors"
 	"fast/config"
 	"fast/handlers"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -253,12 +255,15 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to setup TLS config: %v", err)
 	}
 
+	// Update HTTP server configuration to support long-lived connections
 	server := &http.Server{
-		Addr:         fmt.Sprintf("0.0.0.0:%d", s.config.Server.Port),
-		TLSConfig:    tlsConfig,
-		ReadTimeout:  0, // No timeout for streaming
-		WriteTimeout: 0, // No timeout for streaming
-		IdleTimeout:  0, // No timeout for streaming
+		Addr:              fmt.Sprintf("0.0.0.0:%d", s.config.Server.Port),
+		TLSConfig:         tlsConfig,
+		ReadTimeout:       0,                // No timeout for streaming
+		WriteTimeout:      0,                // No timeout for streaming
+		IdleTimeout:       0,                // No timeout for streaming
+		ReadHeaderTimeout: 10 * time.Second, // Only timeout for reading headers
+		// The lack of timeouts is intentional for supporting SSE and other streaming responses
 	}
 
 	// Start HTTP to HTTPS redirect
@@ -269,15 +274,19 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) startHTTPRedirect() {
+	// Update HTTP redirect server to also support long-lived connections
 	httpServer := &http.Server{
-		// Force IPv4
 		Addr: fmt.Sprintf("0.0.0.0:%d", s.config.Server.HTTPPort),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "https://"+r.Host+r.URL.String(), http.StatusMovedPermanently)
 		}),
+		ReadTimeout:       10 * time.Second, // Can use timeout here as it's just redirecting
+		WriteTimeout:      10 * time.Second, // Can use timeout here as it's just redirecting
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 	s.echo.Logger.Infof("Starting HTTP redirect server on port %d (IPv4)", s.config.Server.HTTPPort)
-	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		s.echo.Logger.Fatal(err)
 	}
 }
