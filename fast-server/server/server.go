@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/tls"
-	"errors"
 	"fast/config"
 	"fast/handlers"
 	"fmt"
@@ -286,7 +285,7 @@ func (s *Server) startHTTPRedirect() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	s.echo.Logger.Infof("Starting HTTP redirect server on port %d (IPv4)", s.config.Server.HTTPPort)
-	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
 		s.echo.Logger.Fatal(err)
 	}
 }
