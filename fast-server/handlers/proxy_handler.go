@@ -88,7 +88,7 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 		TLSClientConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			MaxVersion:         tls.VersionTLS13,
-			InsecureSkipVerify: true, // Always skip verification for proxied requests
+			InsecureSkipVerify: proxyConfig.InsecureSkipVerify, // IMPORTANT: Using the setting from config
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -216,10 +216,10 @@ func handleWebSocket(c echo.Context, location *config.Location) error {
 	header.Set("X-Forwarded-Proto", sourceScheme)
 	header.Set("X-Original-URI", c.Request().URL.Path)
 
-	// Connect to backend
+	// Connect to backend - USE THE PROXY CONFIG SETTING
 	dialer := websocket.Dialer{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: proxyConfig.InsecureSkipVerify, // IMPORTANT: Using config setting
 		},
 		HandshakeTimeout: 10 * time.Second,
 	}
