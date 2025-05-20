@@ -4,10 +4,9 @@ import (
 	"crypto/tls"
 	"fast/config"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"golang.org/x/net/websocket"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -38,7 +37,7 @@ func isWebSocketRequest(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get("Upgrade")) == "websocket"
 }
 
-// handleWebSocketProxy handles proxying of WebSocket connections
+// handleWebSocketProxy handles proxying of WebSocket connections using gorilla/websocket
 func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	proxyConfig := location.Proxy
 	targetScheme := proxyConfig.Protocol
@@ -52,7 +51,7 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		wsScheme = "wss"
 	}
 
-	// Build the target URL, preserving the path
+	// Build the target URL
 	targetURL := fmt.Sprintf("%s://%s:%d%s",
 		wsScheme,
 		proxyConfig.Host,
@@ -65,118 +64,119 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 
 	c.Logger().Infof("Proxying WebSocket connection to: %s", targetURL)
 
-	// Determine the origin scheme based on the incoming request
-	originScheme := "http"
-	if c.Request().TLS != nil {
-		originScheme = "https"
+	// Create a dialer for connecting to the backend
+	dialer := &websocket.Dialer{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+		HandshakeTimeout: 10 * time.Second,
 	}
 
-	// Create a custom websocket config for the target connection
-	targetConfig := websocket.Config{
-		Location:  mustParseURL(targetURL),
-		Origin:    mustParseURL(originScheme + "://" + c.Request().Host),
-		Version:   websocket.ProtocolVersionHybi13,
-		TlsConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-
-	// Copy headers from the client request
-	if targetConfig.Header == nil {
-		targetConfig.Header = make(http.Header)
-	}
-
+	// Copy headers for the backend request
+	requestHeader := http.Header{}
 	for k, v := range c.Request().Header {
-		targetConfig.Header[k] = v
+		requestHeader[k] = v
 	}
 
-	// Add or override proxy headers
+	// Add common proxy headers
 	originalHost := c.Request().Host
-	targetConfig.Header.Set("X-Forwarded-Host", originalHost)
-	targetConfig.Header.Set("X-Real-IP", c.RealIP())
-	targetConfig.Header.Set("X-Forwarded-For", c.RealIP())
+	requestHeader.Set("X-Forwarded-Host", originalHost)
+	requestHeader.Set("X-Real-IP", c.RealIP())
+	requestHeader.Set("X-Forwarded-For", c.RealIP())
 
 	sourceScheme := "http"
 	if c.Request().TLS != nil {
 		sourceScheme = "https"
 	}
-	targetConfig.Header.Set("X-Forwarded-Proto", sourceScheme)
-	targetConfig.Header.Set("X-Original-URI", c.Request().URL.Path)
+	requestHeader.Set("X-Forwarded-Proto", sourceScheme)
+	requestHeader.Set("X-Original-URI", c.Request().URL.Path)
 
-	// Create the WebSocket handler
-	websocket.Handler(func(clientConn *websocket.Conn) {
-		defer clientConn.Close()
-
-		// Connect to the backend service
-		targetConn, err := websocket.DialConfig(&targetConfig)
-		if err != nil {
-			c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
-			return
-		}
-		defer targetConn.Close()
-
-		c.Logger().Info("WebSocket connections established, beginning proxy")
-
-		// Create a channel to monitor when the connections close
-		errChan := make(chan error, 2)
-
-		// Forward client messages to the target
-		go func() {
-			for {
-				var message []byte
-				err := websocket.Message.Receive(clientConn, &message)
-				if err != nil {
-					if err != io.EOF {
-						c.Logger().Errorf("Error reading from client: %v", err)
-					}
-					errChan <- err
-					return
-				}
-
-				err = websocket.Message.Send(targetConn, message)
-				if err != nil {
-					c.Logger().Errorf("Error writing to target: %v", err)
-					errChan <- err
-					return
-				}
-			}
-		}()
-
-		// Forward target messages to the client
-		go func() {
-			for {
-				var message []byte
-				err := websocket.Message.Receive(targetConn, &message)
-				if err != nil {
-					if err != io.EOF {
-						c.Logger().Errorf("Error reading from target: %v", err)
-					}
-					errChan <- err
-					return
-				}
-
-				err = websocket.Message.Send(clientConn, message)
-				if err != nil {
-					c.Logger().Errorf("Error writing to client: %v", err)
-					errChan <- err
-					return
-				}
-			}
-		}()
-
-		// Wait for either connection to close
-		<-errChan
-		c.Logger().Info("WebSocket proxy connection closed")
-	}).ServeHTTP(c.Response(), c.Request())
-
-	return nil
-}
-
-// Helper function to parse URLs and handle errors
-func mustParseURL(rawURL string) *url.URL {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to parse URL %s: %v", rawURL, err))
+	// Upgrader for the client connection
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true // Allow all origins or implement your check
+		},
 	}
-	return u
+
+	// Upgrade the client connection
+	clientConn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		c.Logger().Errorf("Failed to upgrade client connection: %v", err)
+		return echo.ErrInternalServerError
+	}
+	defer clientConn.Close()
+
+	// Connect to the backend
+	backendConn, resp, err := dialer.Dial(targetURL, requestHeader)
+	if err != nil {
+		c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
+		if resp != nil {
+			errorMsg := fmt.Sprintf("Backend error: %d %s", resp.StatusCode, resp.Status)
+			clientConn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, errorMsg))
+		}
+		return nil
+	}
+	defer backendConn.Close()
+
+	c.Logger().Info("WebSocket connections established, beginning proxy")
+
+	// Create channels for the proxy
+	clientDone := make(chan struct{})
+	backendDone := make(chan struct{})
+
+	// Copy messages from client to backend
+	go func() {
+		defer close(clientDone)
+		for {
+			messageType, message, err := clientConn.ReadMessage()
+			if err != nil {
+				c.Logger().Debugf("Client closed connection: %v", err)
+				break
+			}
+
+			err = backendConn.WriteMessage(messageType, message)
+			if err != nil {
+				c.Logger().Errorf("Error writing to backend: %v", err)
+				break
+			}
+		}
+		// Signal the backend to close with a normal closure
+		backendConn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	}()
+
+	// Copy messages from backend to client
+	go func() {
+		defer close(backendDone)
+		for {
+			messageType, message, err := backendConn.ReadMessage()
+			if err != nil {
+				c.Logger().Debugf("Backend closed connection: %v", err)
+				break
+			}
+
+			err = clientConn.WriteMessage(messageType, message)
+			if err != nil {
+				c.Logger().Errorf("Error writing to client: %v", err)
+				break
+			}
+		}
+		// Signal the client to close with a normal closure
+		clientConn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	}()
+
+	// Wait for either connection to finish
+	select {
+	case <-clientDone:
+		c.Logger().Debug("Client connection closed first")
+	case <-backendDone:
+		c.Logger().Debug("Backend connection closed first")
+	}
+
+	c.Logger().Info("WebSocket proxy connection terminated")
+	return nil
 }
 
 func HandleProxy(c echo.Context, domain config.Domain) error {
