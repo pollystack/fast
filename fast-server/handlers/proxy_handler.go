@@ -72,41 +72,34 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
-	// Create new headers by copying non-WebSocket headers ONLY
+	// Create new headers for the backend request
 	requestHeader := make(http.Header)
-
-	// List of WebSocket headers that should NOT be copied
-	wsHeaders := map[string]bool{
-		"upgrade":                  true,
-		"connection":               true,
-		"sec-websocket-key":        true,
-		"sec-websocket-version":    true,
-		"sec-websocket-extensions": true,
-		"sec-websocket-protocol":   true,
-	}
 
 	// Copy all non-WebSocket headers
 	for k, v := range c.Request().Header {
-		if !wsHeaders[strings.ToLower(k)] {
-			// Copy all values for this header
-			for _, value := range v {
-				requestHeader.Add(k, value)
+		k = strings.ToLower(k)
+		if k != "upgrade" && k != "connection" && k != "sec-websocket-key" &&
+			k != "sec-websocket-version" && k != "sec-websocket-extensions" {
+			for _, val := range v {
+				requestHeader.Add(k, val)
 			}
 		}
 	}
 
-	// Special handling for subprotocols - let the library handle these
-	// Just extract and pass to the dialer if needed
-	var subprotocols []string
-	if protocols := c.Request().Header.Get("Sec-WebSocket-Protocol"); protocols != "" {
-		for _, p := range strings.Split(protocols, ",") {
-			subprotocols = append(subprotocols, strings.TrimSpace(p))
+	// Copy WebSocket protocol if specified
+	if proto := c.Request().Header.Get("Sec-WebSocket-Protocol"); proto != "" {
+		// Use the Subprotocols field
+		for _, p := range strings.Split(proto, ",") {
+			dialer.Subprotocols = append(dialer.Subprotocols, strings.TrimSpace(p))
 		}
 	}
-	dialer.Subprotocols = subprotocols
 
-	// Add common proxy headers
+	// CRITICAL: Set the Host header to the ORIGINAL host, not the backend host
+	// This preserves the domain information that the backend needs for routing
 	originalHost := c.Request().Host
+	requestHeader.Set("Host", originalHost) // THIS IS THE KEY FIX
+
+	// Add proxy headers
 	requestHeader.Set("X-Forwarded-Host", originalHost)
 	requestHeader.Set("X-Real-IP", c.RealIP())
 	requestHeader.Set("X-Forwarded-For", c.RealIP())
@@ -117,6 +110,13 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	}
 	requestHeader.Set("X-Forwarded-Proto", sourceScheme)
 	requestHeader.Set("X-Original-URI", c.Request().URL.Path)
+
+	// Keep or set Origin header
+	if origin := c.Request().Header.Get("Origin"); origin != "" {
+		requestHeader.Set("Origin", origin)
+	} else {
+		requestHeader.Set("Origin", sourceScheme+"://"+originalHost)
+	}
 
 	// Upgrader for the client connection
 	upgrader := websocket.Upgrader{
@@ -133,10 +133,8 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	}
 	defer clientConn.Close()
 
-	// Debug the headers we're sending to help diagnose issues
-	c.Logger().Debugf("Connecting to backend with headers: %v", requestHeader)
-
 	// Connect to the backend
+	c.Logger().Infof("Connecting to backend with host header: %s", requestHeader.Get("Host"))
 	backendConn, resp, err := dialer.Dial(targetURL, requestHeader)
 	if err != nil {
 		c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
@@ -209,7 +207,6 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	return nil
 }
 
-// Rest of the HandleProxy function remains unchanged
 func HandleProxy(c echo.Context, domain config.Domain) error {
 	requestPath := c.Request().URL.Path
 	c.Logger().Infof("Original request path: %s", requestPath)
