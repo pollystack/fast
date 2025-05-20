@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"golang.org/x/net/websocket"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -31,6 +33,152 @@ func getMatchingLocation(path string, locations []config.Location) *config.Locat
 	return nil
 }
 
+// isWebSocketRequest checks if the request is a WebSocket upgrade request
+func isWebSocketRequest(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get("Upgrade")) == "websocket"
+}
+
+// handleWebSocketProxy handles proxying of WebSocket connections
+func handleWebSocketProxy(c echo.Context, location *config.Location) error {
+	proxyConfig := location.Proxy
+	targetScheme := proxyConfig.Protocol
+	if targetScheme == "" {
+		targetScheme = "http"
+	}
+
+	// For WebSockets, if the target is https, we need to use wss instead
+	wsScheme := "ws"
+	if targetScheme == "https" {
+		wsScheme = "wss"
+	}
+
+	// Build the target URL, preserving the path
+	targetURL := fmt.Sprintf("%s://%s:%d%s",
+		wsScheme,
+		proxyConfig.Host,
+		proxyConfig.Port,
+		c.Request().URL.Path)
+
+	if c.Request().URL.RawQuery != "" {
+		targetURL += "?" + c.Request().URL.RawQuery
+	}
+
+	c.Logger().Infof("Proxying WebSocket connection to: %s", targetURL)
+
+	// Determine the origin scheme based on the incoming request
+	originScheme := "http"
+	if c.Request().TLS != nil {
+		originScheme = "https"
+	}
+
+	// Create a custom websocket config for the target connection
+	targetConfig := websocket.Config{
+		Location:  mustParseURL(targetURL),
+		Origin:    mustParseURL(originScheme + "://" + c.Request().Host),
+		Version:   websocket.ProtocolVersionHybi13,
+		TlsConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	// Copy headers from the client request
+	if targetConfig.Header == nil {
+		targetConfig.Header = make(http.Header)
+	}
+
+	for k, v := range c.Request().Header {
+		targetConfig.Header[k] = v
+	}
+
+	// Add or override proxy headers
+	originalHost := c.Request().Host
+	targetConfig.Header.Set("X-Forwarded-Host", originalHost)
+	targetConfig.Header.Set("X-Real-IP", c.RealIP())
+	targetConfig.Header.Set("X-Forwarded-For", c.RealIP())
+
+	sourceScheme := "http"
+	if c.Request().TLS != nil {
+		sourceScheme = "https"
+	}
+	targetConfig.Header.Set("X-Forwarded-Proto", sourceScheme)
+	targetConfig.Header.Set("X-Original-URI", c.Request().URL.Path)
+
+	// Create the WebSocket handler
+	websocket.Handler(func(clientConn *websocket.Conn) {
+		defer clientConn.Close()
+
+		// Connect to the backend service
+		targetConn, err := websocket.DialConfig(&targetConfig)
+		if err != nil {
+			c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
+			return
+		}
+		defer targetConn.Close()
+
+		c.Logger().Info("WebSocket connections established, beginning proxy")
+
+		// Create a channel to monitor when the connections close
+		errChan := make(chan error, 2)
+
+		// Forward client messages to the target
+		go func() {
+			for {
+				var message []byte
+				err := websocket.Message.Receive(clientConn, &message)
+				if err != nil {
+					if err != io.EOF {
+						c.Logger().Errorf("Error reading from client: %v", err)
+					}
+					errChan <- err
+					return
+				}
+
+				err = websocket.Message.Send(targetConn, message)
+				if err != nil {
+					c.Logger().Errorf("Error writing to target: %v", err)
+					errChan <- err
+					return
+				}
+			}
+		}()
+
+		// Forward target messages to the client
+		go func() {
+			for {
+				var message []byte
+				err := websocket.Message.Receive(targetConn, &message)
+				if err != nil {
+					if err != io.EOF {
+						c.Logger().Errorf("Error reading from target: %v", err)
+					}
+					errChan <- err
+					return
+				}
+
+				err = websocket.Message.Send(clientConn, message)
+				if err != nil {
+					c.Logger().Errorf("Error writing to client: %v", err)
+					errChan <- err
+					return
+				}
+			}
+		}()
+
+		// Wait for either connection to close
+		<-errChan
+		c.Logger().Info("WebSocket proxy connection closed")
+	}).ServeHTTP(c.Response(), c.Request())
+
+	return nil
+}
+
+// Helper function to parse URLs and handle errors
+func mustParseURL(rawURL string) *url.URL {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse URL %s: %v", rawURL, err))
+	}
+	return u
+}
+
 func HandleProxy(c echo.Context, domain config.Domain) error {
 	requestPath := c.Request().URL.Path
 	c.Logger().Infof("Original request path: %s", requestPath)
@@ -44,7 +192,13 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 
 	c.Logger().Infof("Matched location path: %s", location.Path)
 
-	// Use location's proxy config
+	// Check if this is a WebSocket request and handle it separately
+	if isWebSocketRequest(c.Request()) {
+		c.Logger().Info("Detected WebSocket request, handling with WebSocket proxy")
+		return handleWebSocketProxy(c, location)
+	}
+
+	// Use location's proxy config for normal HTTP requests
 	proxyConfig := location.Proxy
 	targetScheme := proxyConfig.Protocol
 	if targetScheme == "" {
