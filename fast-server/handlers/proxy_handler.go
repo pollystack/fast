@@ -300,6 +300,10 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 			res.Header.Del("Content-Length")          // Remove content length to allow streaming
 			res.Header.Set("X-Accel-Buffering", "no") // Disable nginx buffering
 
+			// Set headers for CORS and COOP for Google OAuth and other services
+			res.Header.Del("Cross-Origin-Opener-Policy")
+			res.Header.Set("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+
 			return nil
 		},
 	})
