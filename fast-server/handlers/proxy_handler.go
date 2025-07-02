@@ -7,7 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -52,38 +51,18 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		wsScheme = "wss"
 	}
 
-	// Handle path rewriting based on location configuration
-	originalPath := c.Request().URL.Path
-	var targetPath string
-
-	if location.Path == "/" {
-		// If location path is root, use the full original path
-		targetPath = originalPath
-	} else {
-		// Strip the location path prefix and append the remainder
-		if strings.HasPrefix(originalPath, location.Path) {
-			targetPath = strings.TrimPrefix(originalPath, location.Path)
-			if !strings.HasPrefix(targetPath, "/") {
-				targetPath = "/" + targetPath
-			}
-		} else {
-			targetPath = originalPath
-		}
-	}
-
 	// Build the target URL
 	targetURL := fmt.Sprintf("%s://%s:%d%s",
 		wsScheme,
 		proxyConfig.Host,
 		proxyConfig.Port,
-		targetPath)
+		c.Request().URL.Path)
 
 	if c.Request().URL.RawQuery != "" {
 		targetURL += "?" + c.Request().URL.RawQuery
 	}
 
 	c.Logger().Infof("Proxying WebSocket connection to: %s", targetURL)
-	c.Logger().Infof("Original path: %s, Location path: %s, Target path: %s", originalPath, location.Path, targetPath)
 
 	// Create a dialer for connecting to the backend
 	dialer := &websocket.Dialer{
@@ -95,14 +74,12 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 
 	// Create new headers for the backend request
 	requestHeader := make(http.Header)
-	originalHost := c.Request().Host
 
 	// Copy all non-WebSocket headers
 	for k, v := range c.Request().Header {
 		k = strings.ToLower(k)
 		if k != "upgrade" && k != "connection" && k != "sec-websocket-key" &&
-			k != "sec-websocket-version" && k != "sec-websocket-extensions" &&
-			k != "host" { // Don't copy the original host header
+			k != "sec-websocket-version" && k != "sec-websocket-extensions" {
 			for _, val := range v {
 				requestHeader.Add(k, val)
 			}
@@ -117,16 +94,12 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		}
 	}
 
-	// CRITICAL FIX: Set the Host header to the BACKEND host, not the original host
-	// This is what the backend server expects to see
-	backendHost := fmt.Sprintf("%s:%d", proxyConfig.Host, proxyConfig.Port)
-	if (proxyConfig.Port == 80 && wsScheme == "ws") || (proxyConfig.Port == 443 && wsScheme == "wss") {
-		// Don't include default ports
-		backendHost = proxyConfig.Host
-	}
-	requestHeader.Set("Host", backendHost)
+	// CRITICAL: Set the Host header to the ORIGINAL host, not the backend host
+	// This preserves the domain information that the backend needs for routing
+	originalHost := c.Request().Host
+	requestHeader.Set("Host", originalHost) // THIS IS THE KEY FIX
 
-	// Add proxy headers for backend to know about the original request
+	// Add proxy headers
 	requestHeader.Set("X-Forwarded-Host", originalHost)
 	requestHeader.Set("X-Real-IP", c.RealIP())
 	requestHeader.Set("X-Forwarded-For", c.RealIP())
@@ -136,11 +109,14 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		sourceScheme = "https"
 	}
 	requestHeader.Set("X-Forwarded-Proto", sourceScheme)
-	requestHeader.Set("X-Original-URI", originalPath)
-	requestHeader.Set("X-Original-Host", originalHost)
+	requestHeader.Set("X-Original-URI", c.Request().URL.Path)
 
-	// Set Origin header to match the backend host
-	requestHeader.Set("Origin", sourceScheme+"://"+originalHost)
+	// Keep or set Origin header
+	if origin := c.Request().Header.Get("Origin"); origin != "" {
+		requestHeader.Set("Origin", origin)
+	} else {
+		requestHeader.Set("Origin", sourceScheme+"://"+originalHost)
+	}
 
 	// Upgrader for the client connection
 	upgrader := websocket.Upgrader{
@@ -157,33 +133,15 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	}
 	defer clientConn.Close()
 
-	// Connect to the backend with better error logging
+	// Connect to the backend
 	c.Logger().Infof("Connecting to backend with host header: %s", requestHeader.Get("Host"))
-	c.Logger().Infof("Full request headers: %+v", requestHeader)
-
 	backendConn, resp, err := dialer.Dial(targetURL, requestHeader)
 	if err != nil {
 		c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
 		if resp != nil {
-			c.Logger().Errorf("Backend response status: %d %s", resp.StatusCode, resp.Status)
-			c.Logger().Errorf("Backend response headers: %+v", resp.Header)
-
-			// Try to read the response body for more details
-			if resp.Body != nil {
-				body, bodyErr := io.ReadAll(resp.Body)
-				if bodyErr == nil {
-					c.Logger().Errorf("Backend response body: %s", string(body))
-				}
-				resp.Body.Close()
-			}
-
 			errorMsg := fmt.Sprintf("Backend error: %d %s", resp.StatusCode, resp.Status)
 			clientConn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, errorMsg))
-		} else {
-			c.Logger().Errorf("No response received from backend")
-			clientConn.WriteMessage(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to backend"))
 		}
 		return nil
 	}
