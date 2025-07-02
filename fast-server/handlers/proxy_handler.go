@@ -97,7 +97,7 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	// CRITICAL: Set the Host header to the ORIGINAL host, not the backend host
 	// This preserves the domain information that the backend needs for routing
 	originalHost := c.Request().Host
-	requestHeader.Set("Host", originalHost) // THIS IS THE KEY FIX
+	requestHeader.Set("Host", fmt.Sprintf("%s:%d", proxyConfig.Host, proxyConfig.Port))
 
 	// Add proxy headers
 	requestHeader.Set("X-Forwarded-Host", originalHost)
