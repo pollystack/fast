@@ -7,7 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -76,94 +75,54 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	// Create new headers for the backend request
 	requestHeader := make(http.Header)
 
-	// Copy ALL headers first (this is important for double-proxy setups)
+	// Copy all non-WebSocket headers
 	for k, v := range c.Request().Header {
-		// Skip headers that will be handled specially or by gorilla/websocket
-		lowerK := strings.ToLower(k)
-		if lowerK == "upgrade" ||
-			lowerK == "connection" ||
-			lowerK == "sec-websocket-key" ||
-			lowerK == "sec-websocket-version" ||
-			lowerK == "sec-websocket-extensions" ||
-			lowerK == "sec-websocket-protocol" {
-			continue
+		k = strings.ToLower(k)
+		if k != "upgrade" && k != "connection" && k != "sec-websocket-key" &&
+			k != "sec-websocket-version" && k != "sec-websocket-extensions" {
+			for _, val := range v {
+				requestHeader.Add(k, val)
+			}
 		}
-		requestHeader[k] = v
 	}
 
-	// Handle WebSocket-specific headers
-	// gorilla/websocket handles most of these automatically, but we need to handle subprotocols
+	// Copy WebSocket protocol if specified
 	if proto := c.Request().Header.Get("Sec-WebSocket-Protocol"); proto != "" {
-		dialer.Subprotocols = strings.Split(proto, ",")
-		for i := range dialer.Subprotocols {
-			dialer.Subprotocols[i] = strings.TrimSpace(dialer.Subprotocols[i])
+		// Use the Subprotocols field
+		for _, p := range strings.Split(proto, ",") {
+			dialer.Subprotocols = append(dialer.Subprotocols, strings.TrimSpace(p))
 		}
 	}
 
-	// Note: Do NOT manually set Sec-WebSocket-Extensions as gorilla/websocket handles this
-	// The dialer will negotiate extensions automatically
+	// CRITICAL: Set the Host header to the ORIGINAL host, not the backend host
+	// This preserves the domain information that the backend needs for routing
+	originalHost := c.Request().Host
+	requestHeader.Set("Host", originalHost) // THIS IS THE KEY FIX
 
-	// CRITICAL: For double-proxy setup, we need to handle the Host header carefully
-	// Check if we already have X-Forwarded-Host from the first proxy
-	originalHost := c.Request().Header.Get("X-Forwarded-Host")
-	if originalHost == "" {
-		// If not, use the current request's host
-		originalHost = c.Request().Host
-	}
-
-	// Set the Host header to the ORIGINAL host (from the first request)
-	requestHeader.Set("Host", originalHost)
-
-	// Add/Update proxy headers for the chain
+	// Add proxy headers
 	requestHeader.Set("X-Forwarded-Host", originalHost)
-
-	// Handle X-Forwarded-For to maintain the chain
-	forwardedFor := c.Request().Header.Get("X-Forwarded-For")
-	if forwardedFor != "" {
-		// Append our IP to the existing chain
-		requestHeader.Set("X-Forwarded-For", forwardedFor+", "+c.RealIP())
-	} else {
-		requestHeader.Set("X-Forwarded-For", c.RealIP())
-	}
-
 	requestHeader.Set("X-Real-IP", c.RealIP())
+	requestHeader.Set("X-Forwarded-For", c.RealIP())
 
-	// Handle X-Forwarded-Proto - preserve from first proxy if available
-	forwardedProto := c.Request().Header.Get("X-Forwarded-Proto")
-	if forwardedProto == "" {
-		if c.Request().TLS != nil {
-			forwardedProto = "https"
-		} else {
-			forwardedProto = "http"
-		}
+	sourceScheme := "http"
+	if c.Request().TLS != nil {
+		sourceScheme = "https"
 	}
-	requestHeader.Set("X-Forwarded-Proto", forwardedProto)
-
+	requestHeader.Set("X-Forwarded-Proto", sourceScheme)
 	requestHeader.Set("X-Original-URI", c.Request().URL.Path)
 
-	// Handle Origin header - preserve from original request
+	// Keep or set Origin header
 	if origin := c.Request().Header.Get("Origin"); origin != "" {
 		requestHeader.Set("Origin", origin)
 	} else {
-		// Construct origin from the original host
-		requestHeader.Set("Origin", forwardedProto+"://"+originalHost)
+		requestHeader.Set("Origin", sourceScheme+"://"+originalHost)
 	}
-
-	// Add debug logging for double-proxy scenario
-	c.Logger().Infof("WebSocket proxy chain debug:")
-	c.Logger().Infof("  Original Host: %s", originalHost)
-	c.Logger().Infof("  Target URL: %s", targetURL)
-	c.Logger().Infof("  X-Forwarded-Host: %s", requestHeader.Get("X-Forwarded-Host"))
-	c.Logger().Infof("  X-Forwarded-For: %s", requestHeader.Get("X-Forwarded-For"))
-	c.Logger().Infof("  Origin: %s", requestHeader.Get("Origin"))
 
 	// Upgrader for the client connection
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins in proxy scenario
+			return true // Allow all origins
 		},
-		// Enable compression if the client supports it
-		EnableCompression: true,
 	}
 
 	// Upgrade the client connection
@@ -175,24 +134,15 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	defer clientConn.Close()
 
 	// Connect to the backend
-	c.Logger().Infof("Connecting to backend with headers: %v", requestHeader)
+	c.Logger().Infof("Connecting to backend with host header: %s", requestHeader.Get("Host"))
 	backendConn, resp, err := dialer.Dial(targetURL, requestHeader)
 	if err != nil {
 		c.Logger().Errorf("Failed to connect to backend WebSocket: %v", err)
 		if resp != nil {
-			c.Logger().Errorf("Backend response status: %d %s", resp.StatusCode, resp.Status)
-			// Try to read error body
-			if resp.Body != nil {
-				bodyBytes, _ := io.ReadAll(resp.Body)
-				c.Logger().Errorf("Backend error body: %s", string(bodyBytes))
-			}
+			errorMsg := fmt.Sprintf("Backend error: %d %s", resp.StatusCode, resp.Status)
+			clientConn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, errorMsg))
 		}
-		errorMsg := fmt.Sprintf("Backend error: %v", err)
-		if resp != nil {
-			errorMsg = fmt.Sprintf("Backend error: %d %s", resp.StatusCode, resp.Status)
-		}
-		clientConn.WriteMessage(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, errorMsg))
 		return nil
 	}
 	defer backendConn.Close()
@@ -203,27 +153,19 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	clientDone := make(chan struct{})
 	backendDone := make(chan struct{})
 
-	// Error channel to capture any errors
-	errChan := make(chan error, 2)
-
 	// Copy messages from client to backend
 	go func() {
 		defer close(clientDone)
 		for {
 			messageType, message, err := clientConn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-					c.Logger().Errorf("Client read error: %v", err)
-					errChan <- err
-				} else {
-					c.Logger().Debugf("Client closed connection normally: %v", err)
-				}
+				c.Logger().Debugf("Client closed connection: %v", err)
 				break
 			}
 
-			if err := backendConn.WriteMessage(messageType, message); err != nil {
+			err = backendConn.WriteMessage(messageType, message)
+			if err != nil {
 				c.Logger().Errorf("Error writing to backend: %v", err)
-				errChan <- err
 				break
 			}
 		}
@@ -238,18 +180,13 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		for {
 			messageType, message, err := backendConn.ReadMessage()
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-					c.Logger().Errorf("Backend read error: %v", err)
-					errChan <- err
-				} else {
-					c.Logger().Debugf("Backend closed connection normally: %v", err)
-				}
+				c.Logger().Debugf("Backend closed connection: %v", err)
 				break
 			}
 
-			if err := clientConn.WriteMessage(messageType, message); err != nil {
+			err = clientConn.WriteMessage(messageType, message)
+			if err != nil {
 				c.Logger().Errorf("Error writing to client: %v", err)
-				errChan <- err
 				break
 			}
 		}
@@ -264,8 +201,6 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		c.Logger().Debug("Client connection closed first")
 	case <-backendDone:
 		c.Logger().Debug("Backend connection closed first")
-	case err := <-errChan:
-		c.Logger().Errorf("WebSocket proxy error: %v", err)
 	}
 
 	c.Logger().Info("WebSocket proxy connection terminated")
@@ -364,6 +299,10 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 			// Always treat as streaming
 			res.Header.Del("Content-Length")          // Remove content length to allow streaming
 			res.Header.Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+			// Set headers for CORS and COOP for Google OAuth and other services
+			res.Header.Del("Cross-Origin-Opener-Policy")
+			res.Header.Set("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
 
 			return nil
 		},
