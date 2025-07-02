@@ -78,17 +78,21 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 
 	// Copy ALL headers first (this is important for double-proxy setups)
 	for k, v := range c.Request().Header {
-		// Skip headers that will be handled specially
+		// Skip headers that will be handled specially or by gorilla/websocket
 		lowerK := strings.ToLower(k)
-		if lowerK == "upgrade" || lowerK == "connection" ||
-			lowerK == "sec-websocket-key" || lowerK == "sec-websocket-version" {
+		if lowerK == "upgrade" ||
+			lowerK == "connection" ||
+			lowerK == "sec-websocket-key" ||
+			lowerK == "sec-websocket-version" ||
+			lowerK == "sec-websocket-extensions" ||
+			lowerK == "sec-websocket-protocol" {
 			continue
 		}
 		requestHeader[k] = v
 	}
 
 	// Handle WebSocket-specific headers
-	// These are handled by gorilla/websocket automatically, but we need to handle subprotocols
+	// gorilla/websocket handles most of these automatically, but we need to handle subprotocols
 	if proto := c.Request().Header.Get("Sec-WebSocket-Protocol"); proto != "" {
 		dialer.Subprotocols = strings.Split(proto, ",")
 		for i := range dialer.Subprotocols {
@@ -96,10 +100,8 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 		}
 	}
 
-	// Handle extensions
-	if ext := c.Request().Header.Get("Sec-WebSocket-Extensions"); ext != "" {
-		requestHeader.Set("Sec-WebSocket-Extensions", ext)
-	}
+	// Note: Do NOT manually set Sec-WebSocket-Extensions as gorilla/websocket handles this
+	// The dialer will negotiate extensions automatically
 
 	// CRITICAL: For double-proxy setup, we need to handle the Host header carefully
 	// Check if we already have X-Forwarded-Host from the first proxy
