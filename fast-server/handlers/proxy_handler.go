@@ -97,7 +97,7 @@ func handleWebSocketProxy(c echo.Context, location *config.Location) error {
 	// CRITICAL: Set the Host header to the ORIGINAL host, not the backend host
 	// This preserves the domain information that the backend needs for routing
 	originalHost := c.Request().Host
-	requestHeader.Set("Host", fmt.Sprintf("%s:%d", proxyConfig.Host, proxyConfig.Port))
+	requestHeader.Set("Host", originalHost) // THIS IS THE KEY FIX
 
 	// Add proxy headers
 	requestHeader.Set("X-Forwarded-Host", originalHost)
@@ -299,10 +299,6 @@ func HandleProxy(c echo.Context, domain config.Domain) error {
 			// Always treat as streaming
 			res.Header.Del("Content-Length")          // Remove content length to allow streaming
 			res.Header.Set("X-Accel-Buffering", "no") // Disable nginx buffering
-
-			// Set headers for CORS and COOP for Google OAuth and other services
-			res.Header.Del("Cross-Origin-Opener-Policy")
-			res.Header.Set("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
 
 			return nil
 		},
