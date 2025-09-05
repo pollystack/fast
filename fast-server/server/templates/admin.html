@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAST Admin - EC Authentication Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .nav-tab {
+            padding: 15px 30px;
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .nav-tab:hover {
+            background: rgba(0,0,0,0.05);
+        }
+
+        .nav-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 30px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .domain-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+        }
+
+        .domain-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .domain-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .domain-type {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .type-static { background: #d4edda; color: #155724; }
+        .type-proxy { background: #cce5ff; color: #004085; }
+        .type-file_directory { background: #fff3cd; color: #856404; }
+
+        .auth-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .auth-enabled {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .auth-disabled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .key-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border: 1px solid #dee2e6;
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .close-modal {
+            float: right;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🔐 FAST Admin Panel</h1>
+        <p>Manage EC Authentication and Domain Configuration</p>
+    </div>
+
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="switchTab('domains')">Domains</button>
+        <button class="nav-tab" onclick="switchTab('keys')">EC Keys</button>
+        <button class="nav-tab" onclick="switchTab('new-domain')">Add Domain</button>
+        <button class="nav-tab" onclick="switchTab('test')">Test Auth</button>
+    </div>
+
+    <!-- Domains Tab -->
+    <div id="domains-tab" class="tab-content active">
+        <div class="section">
+            <h2>Configured Domains</h2>
+            <div id="domainsList">
+                {{range .Domains}}
+                <div class="domain-card" data-domain="{{.Name}}">
+                    <div class="domain-header">
+                        <div>
+                            <span class="domain-name">{{.Name}}</span>
+                            <span class="domain-type type-{{.Type}}">{{.Type}}</span>
+                            {{if .Auth.Enabled}}
+                            <span class="auth-status auth-enabled">🔒 Auth Enabled</span>
+                            {{else}}
+                            <span class="auth-status auth-disabled">🔓 No Auth</span>
+                            {{end}}
+                        </div>
+                        <div>
+                            <button class="btn btn-primary" onclick="editDomain('{{.Name}}')">Edit Auth</button>
+                            <button class="btn btn-danger" onclick="deleteDomain('{{.Name}}')">Delete</button>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; color: #666; font-size: 14px;">
+                        {{if eq .Type "static" "file_directory"}}
+                        <p><strong>Public Dir:</strong> {{.PublicDir}}</p>
+                        {{end}}
+                        {{if eq .Type "proxy"}}
+                        <p><strong>Proxy:</strong> {{.Proxy.Protocol}}://{{.Proxy.Host}}:{{.Proxy.Port}}</p>
+                        {{end}}
+                        {{if .Auth.Enabled}}
+                        <p><strong>Token Lifetime:</strong> {{.Auth.TokenLifetime}}s |
+                            <strong>Require Hob:</strong> {{if .Auth.RequireBrowser}}Yes{{else}}No{{end}}</p>
+                        {{end}}
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+    <!-- EC Keys Tab -->
+    <div id="keys-tab" class="tab-content">
+        <div class="section">
+            <h2>EC Key Management</h2>
+            <div class="alert alert-info">
+                Generate EC key pairs here. Share the public key with your server config, keep the private key in your Hob browser.
+            </div>
+
+            <button class="btn btn-primary" onclick="generateKeys()">Generate New Key Pair</button>
+
+            <div id="generatedKeys" style="display: none; margin-top: 20px;">
+                <h3>Generated Keys</h3>
+
+                <div class="form-group">
+                    <label>Public Key (Add to server config):</label>
+                    <div class="key-display" style="position: relative;">
+                        <pre id="publicKey"></pre>
+                        <button class="btn btn-secondary copy-btn" onclick="copyToClipboard('publicKey')">Copy</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Private Key (Keep secret - use in Hob browser):</label>
+                    <div class="key-display" style="position: relative;">
+                        <pre id="privateKey"></pre>
+                        <button class="btn btn-secondary copy-btn" onclick="copyToClipboard('privateKey')">Copy</button>
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="downloadKeys()">Download Keys</button>
+            </div>
+
+            {{if .StoredKeys}}
+            <div style="margin-top: 30px;">
+                <h3>Previously Generated Keys</h3>
+                {{range $index, $key := .StoredKeys}}
+                <div class="domain-card">
+                    <p><strong>Key Pair #{{$index}}</strong> - Created: {{$key.CreatedAt}}</p>
+                    <button class="btn btn-secondary" onclick="showStoredKey({{$index}})">View</button>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Add Domain Tab -->
+    <div id="new-domain-tab" class="tab-content">
+        <div class="section">
+            <h2>Add New Domain</h2>
+
+            <div class="form-group">
+                <label>Domain Name:</label>
+                <input type="text" id="newDomainName" placeholder="example.hobbitly.com">
+            </div>
+
+            <div class="form-group">
+                <label>Type:</label>
+                <select id="newDomainType" onchange="updateDomainTypeFields()">
+                    <option value="static">Static Files</option>
+                    <option value="proxy">Reverse Proxy</option>
+                    <option value="file_directory">File Directory</option>
+                </select>
+            </div>
+
+            <div id="staticFields">
+                <div class="form-group">
+                    <label>Public Directory:</label>
+                    <input type="text" id="newPublicDir" placeholder="/var/www/fast/example.com">
+                </div>
+            </div>
+
+            <div id="proxyFields" style="display: none;">
+                <div class="grid">
+                    <div class="form-group">
+                        <label>Backend Host:</label>
+                        <input type="text" id="newProxyHost" placeholder="127.0.0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Backend Port:</label>
+                        <input type="number" id="newProxyPort" placeholder="8000">
+                    </div>
+                    <div class="form-group">
+                        <label>Protocol:</label>
+                        <select id="newProxyProtocol">
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>SSL Certificate Path:</label>
+                <input type="text" id="newSSLCert" placeholder="/etc/fast/ssl/example.com/fullchain.pem">
+            </div>
+
+            <div class="form-group">
+                <label>SSL Key Path:</label>
+                <input type="text" id="newSSLKey" placeholder="/etc/fast/ssl/example.com/privkey.pem">
+            </div>
+
+            <h3 style="margin-top: 30px;">Authentication Settings</h3>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="newAuthEnabled" onchange="toggleNewAuthFields()">
+                <label for="newAuthEnabled">Enable EC Authentication</label>
+            </div>
+
+            <div id="newAuthFields" style="display: none;">
+                <div class="form-group">
+                    <label>Public Key:</label>
+                    <textarea id="newAuthPublicKey" placeholder="Paste the EC public key here"></textarea>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="newRequireHob">
+                    <label for="newRequireHob">Require Hob Browser</label>
+                </div>
+
+                <div class="form-group">
+                    <label>Token Lifetime (seconds):</label>
+                    <input type="number" id="newTokenLifetime" value="3600">
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="addDomain()">Add Domain</button>
+        </div>
+    </div>
+
+    <!-- Test Auth Tab -->
+    <div id="test-tab" class="tab-content">
+        <div class="section">
+            <h2>Test Authentication</h2>
+
+            <div class="form-group">
+                <label>Select Domain:</label>
+                <select id="testDomain">
+                    {{range .Domains}}
+                    {{if .Auth.Enabled}}
+                    <option value="{{.Name}}">{{.Name}}</option>
+                    {{end}}
+                    {{end}}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Test Token (from Hob browser):</label>
+                <textarea id="testToken" placeholder="Paste your authentication token here"></textarea>
+            </div>
+
+            <button class="btn btn-primary" onclick="testAuth()">Test Authentication</button>
+
+            <div id="testResult" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Domain Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <h3>Edit Authentication Settings</h3>
+        </div>
+
+        <input type="hidden" id="editDomainName">
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="editAuthEnabled">
+            <label for="editAuthEnabled">Enable EC Authentication</label>
+        </div>
+
+        <div id="editAuthFields">
+            <div class="form-group">
+                <label>Public Key:</label>
+                <textarea id="editPublicKey"></textarea>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="editRequireHob">
+                <label for="editRequireHob">Require Hob Browser</label>
+            </div>
+
+            <div class="form-group">
+                <label>Token Lifetime (seconds):</label>
+                <input type="number" id="editTokenLifetime">
+            </div>
+
+            <div class="form-group">
+                <label>Allowed Hosts (one per line):</label>
+                <textarea id="editAllowedHosts" rows="3"></textarea>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveAuthSettings()">Save Settings</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabName) {
+        // Remove active class from all tabs
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+
+        // Add active class to selected tab
+        event.target.classList.add('active');
+        document.getElementById(tabName + '-tab').classList.add('active');
+    }
+
+    async function generateKeys() {
+        try {
+            const response = await fetch('/admin/api/generate-keys', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': getAdminToken()
+                }
+            });
+
+            if (!response.ok) throw new Error('Failed to generate keys');
+
+            const keys = await response.json();
+
+            document.getElementById('generatedKeys').style.display = 'block';
+            document.getElementById('publicKey').textContent = keys.public_key;
+            document.getElementById('privateKey').textContent = keys.private_key;
+
+            showAlert('Keys generated successfully!', 'success');
+        } catch (error) {
+            showAlert('Error generating keys: ' + error.message, 'danger');
+        }
+    }
+
+    function copyToClipboard(elementId) {
+        const text = document.getElementById(elementId).textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            showAlert('Copied to clipboard!', 'success');
+        });
+    }
+
+    function downloadKeys() {
+        const publicKey = document.getElementById('publicKey').textContent;
+        const privateKey = document.getElementById('privateKey').textContent;
+
+        const data = {
+            public_key: publicKey,
+            private_key: privateKey,
+            generated_at: new Date().toISOString()
+        };
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ec-keypair.json';
+        a.click();
+    }
+
+    function editDomain(domainName) {
+        document.getElementById('editDomainName').value = domainName;
+
+        // Load current settings
+        const domainCard = document.querySelector(`[data-domain="${domainName}"]`);
+        // You'd load actual settings from the server here
+
+        document.getElementById('editModal').classList.add('active');
+    }
+
+    async function saveAuthSettings() {
+        const domainName = document.getElementById('editDomainName').value;
+        const data = {
+            domain_name: domainName,
+            enabled: document.getElementById('editAuthEnabled').checked,
+            public_key: document.getElementById('editPublicKey').value,
+            require_browser: document.getElementById('editRequireHob').checked,
+            token_lifetime: parseInt(document.getElementById('editTokenLifetime').value),
+            allowed_hosts: document.getElementById('editAllowedHosts').value.split('\n').filter(h => h.trim())
+        };
+
+        try {
+            const response = await fetch('/admin/api/domain-auth', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': getAdminToken()
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) throw new Error('Failed to update settings');
+
+            showAlert('Authentication settings updated!', 'success');
+            closeModal();
+            location.reload();
+        } catch (error) {
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    }
+
+    async function deleteDomain(domainName) {
+        if (!confirm(`Are you sure you want to delete ${domainName}?`)) return;
+
+        try {
+            const response = await fetch(`/admin/api/domain/${domainName}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-Admin-Token': getAdminToken()
+                }
+            });
+
+            if (!response.ok) throw new Error('Failed to delete domain');
+
+            showAlert('Domain deleted successfully!', 'success');
+            location.reload();
+        } catch (error) {
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    }
+
+    async function addDomain() {
+        const type = document.getElementById('newDomainType').value;
+        const data = {
+            name: document.getElementById('newDomainName').value,
+            type: type,
+            ssl: {
+                cert_file: document.getElementById('newSSLCert').value,
+                key_file: document.getElementById('newSSLKey').value
+            }
+        };
+
+        if (type === 'static' || type === 'file_directory') {
+            data.public_dir = document.getElementById('newPublicDir').value;
+        } else if (type === 'proxy') {
+            data.proxy = {
+                host: document.getElementById('newProxyHost').value,
+                port: parseInt(document.getElementById('newProxyPort').value),
+                protocol: document.getElementById('newProxyProtocol').value
+            };
+        }
+
+        if (document.getElementById('newAuthEnabled').checked) {
+            data.auth = {
+                enabled: true,
+                type: 'ec',
+                public_key: document.getElementById('newAuthPublicKey').value,
+                require_browser: document.getElementById('newRequireHob').checked,
+                token_lifetime: parseInt(document.getElementById('newTokenLifetime').value)
+            };
+        }
+
+        try {
+            const response = await fetch('/admin/api/domain', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Token': getAdminToken()
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) throw new Error('Failed to add domain');
+
+            showAlert('Domain added successfully!', 'success');
+            location.reload();
+        } catch (error) {
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    }
+
+    async function testAuth() {
+        const domain = document.getElementById('testDomain').value;
+        const token = document.getElementById('testToken').value;
+
+        try {
+            const response = await fetch(`/admin/api/test-auth?domain=${domain}&token=${encodeURIComponent(token)}`, {
+                headers: {
+                    'X-Admin-Token': getAdminToken()
+                }
+            });
+
+            const result = await response.json();
+
+            const resultDiv = document.getElementById('testResult');
+            resultDiv.className = `alert alert-${result.status === 'success' ? 'success' : 'danger'}`;
+            resultDiv.textContent = result.message;
+        } catch (error) {
+            showAlert('Error: ' + error.message, 'danger');
+        }
+    }
+
+    function updateDomainTypeFields() {
+        const type = document.getElementById('newDomainType').value;
+        document.getElementById('staticFields').style.display =
+            (type === 'static' || type === 'file_directory') ? 'block' : 'none';
+        document.getElementById('proxyFields').style.display =
+            type === 'proxy' ? 'block' : 'none';
+    }
+
+    function toggleNewAuthFields() {
+        const enabled = document.getElementById('newAuthEnabled').checked;
+        document.getElementById('newAuthFields').style.display = enabled ? 'block' : 'none';
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').classList.remove('active');
+    }
+
+    function showAlert(message, type) {
+        // You could implement a toast notification system here
+        console.log(`${type}: ${message}`);
+    }
+
+    function getAdminToken() {
+        // Get from environment or prompt user
+        return localStorage.getItem('admin_token') || '';
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Set up event listeners
+    });
+</script>
+</body>
+</html>

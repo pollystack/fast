@@ -58,13 +58,24 @@ type Location struct {
 	Proxy ProxyConfig `yaml:"proxy"`
 }
 
+// AuthConfig for EC authentication
+type AuthConfig struct {
+	Enabled        bool     `yaml:"enabled"`
+	Type           string   `yaml:"type"`            // "ec" for elliptic curve
+	PublicKey      string   `yaml:"public_key"`      // PEM encoded EC public key
+	AllowedHosts   []string `yaml:"allowed_hosts"`   // Subdomains requiring auth
+	TokenLifetime  int      `yaml:"token_lifetime"`  // Seconds
+	RequireBrowser bool     `yaml:"require_browser"` // Require Hob browser
+}
+
 type Domain struct {
 	Name      string      `yaml:"name"`
 	Type      string      `yaml:"type"`
 	PublicDir string      `yaml:"public_dir"`
 	Proxy     ProxyConfig `yaml:"proxy"`
 	SSL       SSLConfig   `yaml:"ssl"`
-	Locations []Location  `yaml:"locations,omitempty"` // Add this line
+	Locations []Location  `yaml:"locations,omitempty"`
+	Auth      AuthConfig  `yaml:"auth,omitempty"` // Add authentication config
 }
 
 func (d *Domain) setDefaults() {
@@ -86,6 +97,14 @@ func (d *Domain) setDefaults() {
 				d.Locations[i].Proxy.setDefaults()
 			}
 		}
+	}
+
+	// Set auth defaults
+	if d.Auth.Type == "" && d.Auth.Enabled {
+		d.Auth.Type = "ec"
+	}
+	if d.Auth.TokenLifetime == 0 && d.Auth.Enabled {
+		d.Auth.TokenLifetime = 3600 // Default 1 hour
 	}
 }
 
@@ -114,6 +133,19 @@ func (d *Domain) validate() error {
 		}
 	} else if d.PublicDir == "" {
 		return fmt.Errorf("public_dir is required for type: %s", d.Type)
+	}
+
+	// Validate auth if enabled
+	if d.Auth.Enabled {
+		if d.Auth.Type != "ec" {
+			return fmt.Errorf("invalid auth type: %s", d.Auth.Type)
+		}
+		if d.Auth.PublicKey == "" {
+			return fmt.Errorf("public_key is required when auth is enabled")
+		}
+		if d.Auth.TokenLifetime <= 0 {
+			return fmt.Errorf("invalid token_lifetime: %d", d.Auth.TokenLifetime)
+		}
 	}
 
 	// Always validate SSL for the regular validate method
@@ -176,6 +208,19 @@ func (d *Domain) validateWithoutSSL() error {
 		}
 	} else if d.PublicDir == "" {
 		return fmt.Errorf("public_dir is required for type: %s", d.Type)
+	}
+
+	// Validate auth if enabled
+	if d.Auth.Enabled {
+		if d.Auth.Type != "ec" {
+			return fmt.Errorf("invalid auth type: %s", d.Auth.Type)
+		}
+		if d.Auth.PublicKey == "" {
+			return fmt.Errorf("public_key is required when auth is enabled")
+		}
+		if d.Auth.TokenLifetime <= 0 {
+			return fmt.Errorf("invalid token_lifetime: %d", d.Auth.TokenLifetime)
+		}
 	}
 
 	return nil
@@ -241,7 +286,8 @@ type Config struct {
 		WriteTimeout            string `yaml:"write_timeout"`
 		GracefulShutdownTimeout string `yaml:"graceful_shutdown_timeout"`
 	} `yaml:"settings"`
-	IsDevelopment bool `yaml:"is_development"`
+	IsDevelopment bool   `yaml:"is_development"`
+	AdminToken    string `yaml:"admin_token,omitempty"` // Optional admin token for remote access
 }
 
 func (c *Config) setDefaults() {

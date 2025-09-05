@@ -1,38 +1,93 @@
 server:
   port: 443
-  http_port: 80  # for HTTP to HTTPS redirect
+  http_port: 80
+
+# Optional: Admin token for remote admin panel access
+# If not set, admin panel is only accessible from localhost
+admin_token: "your-secret-admin-token-here"
 
 domains:
-  - name: example.com
+  # Public site - no authentication required
+  - name: hobbitly.com
     type: static
-    public_dir: /var/www/fast/example.com
+    public_dir: /var/www/fast/hobbitly.com
     ssl:
-      cert_file: /etc/fast/ssl/example.com/fullchain.pem
-      key_file: /etc/fast/ssl/example.com/privkey.pem
+      cert_file: /etc/fast/ssl/hobbitly.com/fullchain.pem
+      key_file: /etc/fast/ssl/hobbitly.com/privkey.pem
 
-  - name: files.example.com
+  # Protected site - requires Hob browser with EC authentication
+  - name: protected.hobbitly.com
+    type: static
+    public_dir: /var/www/fast/protected
+    auth:
+      enabled: true
+      type: ec
+      require_browser: true
+      token_lifetime: 3600  # 1 hour
+      public_key: |
+        -----BEGIN PUBLIC KEY-----
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7qPzLplRG4Y8XzNrWJNnxhgX4Hnr
+        N3yq8FJvGxLKJzF5bQz9+YUXzV5GqvDUWmLWcMEg4qH7TzLQfJpXHvtN8w==
+        -----END PUBLIC KEY-----
+      allowed_hosts:  # Optional: if empty, auth required for this domain
+        - protected.hobbitly.com
+    ssl:
+      cert_file: /etc/fast/ssl/protected.hobbitly.com/fullchain.pem
+      key_file: /etc/fast/ssl/protected.hobbitly.com/privkey.pem
+
+  # File directory with optional auth
+  - name: files.hobbitly.com
     type: file_directory
     public_dir: /var/www/fast/files
+    auth:
+      enabled: false  # Can be enabled via admin panel
+      type: ec
+      require_browser: false
+      token_lifetime: 7200
+      public_key: ""  # Add via admin panel
     ssl:
-      cert_file: /etc/fast/ssl/files.example.com/fullchain.pem
-      key_file: /etc/fast/ssl/files.example.com/privkey.pem
+      cert_file: /etc/fast/ssl/files.hobbitly.com/fullchain.pem
+      key_file: /etc/fast/ssl/files.hobbitly.com/privkey.pem
 
-  - name: another-domain.com
-    type: static
-    public_dir: /var/www/fast/another-domain.com
-    ssl:
-      cert_file: /etc/fast/ssl/another-domain.com/fullchain.pem
-      key_file: /etc/fast/ssl/another-domain.com/privkey.pem
-
-  - name: api.example.com
+  # API endpoint - protected with EC auth (no browser requirement)
+  - name: api.hobbitly.com
     type: proxy
     proxy:
       host: 127.0.0.1
       port: 8000
+      protocol: http
+      insecure_skip_verify: false
+    locations:
+      - path: /
+        proxy:
+          host: 127.0.0.1
+          port: 8000
+          protocol: http
+    auth:
+      enabled: true
+      type: ec
+      require_browser: false  # API access doesn't require Hob browser
+      token_lifetime: 300     # 5 minutes for API tokens
+      public_key: |
+        -----BEGIN PUBLIC KEY-----
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7qPzLplRG4Y8XzNrWJNnxhgX4Hnr
+        N3yq8FJvGxLKJzF5bQz9+YUXzV5GqvDUWmLWcMEg4qH7TzLQfJpXHvtN8w==
+        -----END PUBLIC KEY-----
+      allowed_hosts:
+        - api.hobbitly.com
     ssl:
-      cert_file: /etc/fast/ssl/api.example.com/fullchain.pem
-      key_file: /etc/fast/ssl/api.example.com/privkey.pem
+      cert_file: /etc/fast/ssl/api.hobbitly.com/fullchain.pem
+      key_file: /etc/fast/ssl/api.hobbitly.com/privkey.pem
 
+  # Wildcard domain without auth (can be configured per subdomain)
+  - name: "*.hobbitly.com"
+    type: static
+    public_dir: /var/www/fast/subdomains
+    ssl:
+      cert_file: /etc/fast/ssl/wildcard.hobbitly.com/fullchain.pem
+      key_file: /etc/fast/ssl/wildcard.hobbitly.com/privkey.pem
+
+# Global SSL fallback (optional)
 global_ssl:
   cert_file: /etc/fast/ssl/global/fullchain.pem
   key_file: /etc/fast/ssl/global/privkey.pem
@@ -42,6 +97,6 @@ log:
   level: info  # Options: debug, info, warn, error
 
 settings:
-  read_timeout: 5s
-  write_timeout: 10s
+  read_timeout: 0s      # For streaming support
+  write_timeout: 0s     # For streaming support
   graceful_shutdown_timeout: 30s

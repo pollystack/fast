@@ -103,6 +103,22 @@ func (s *Server) setupRoutes() {
 		})
 	})
 
+	// Admin routes - add before domain middleware
+	// These routes are accessible only from localhost or with admin token
+	admin := s.echo.Group("/admin")
+
+	// Admin UI
+	admin.GET("", handlers.HandleAdminPanel)
+	admin.GET("/", handlers.HandleAdminPanel)
+
+	// Admin API endpoints
+	adminAPI := admin.Group("/api")
+	adminAPI.POST("/generate-keys", handlers.HandleGenerateKeys)
+	adminAPI.PUT("/domain-auth", handlers.HandleUpdateDomainAuth)
+	adminAPI.POST("/domain", handlers.HandleAddDomain)
+	adminAPI.DELETE("/domain/:domain", handlers.HandleDeleteDomain)
+	adminAPI.GET("/test-auth", handlers.HandleTestAuthentication)
+
 	// Create a map for quick domain lookup
 	domainMap := make(map[string]config.Domain)
 	for _, domain := range s.config.Domains {
@@ -112,8 +128,9 @@ func (s *Server) setupRoutes() {
 	// Single middleware to handle all domains
 	s.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Skip domain check for health check endpoint
-			if c.Request().URL.Path == "/health" {
+			// Skip domain check for health and admin endpoints
+			if c.Request().URL.Path == "/health" ||
+				strings.HasPrefix(c.Request().URL.Path, "/admin") {
 				return next(c)
 			}
 
@@ -128,6 +145,22 @@ func (s *Server) setupRoutes() {
 				if !strings.HasPrefix(domain.Name, "*.") && host == domain.Name {
 					log.Printf("Matched exact domain: %s", domain.Name)
 					c.Set("domain", domain)
+
+					// Check if authentication is required
+					if domain.Auth.Enabled && domain.Auth.Type == "ec" {
+						// Apply EC authentication middleware
+						authConfig := handlers.ECAuthConfig{
+							PublicKey:      domain.Auth.PublicKey,
+							AllowedHosts:   domain.Auth.AllowedHosts,
+							TokenLifetime:  domain.Auth.TokenLifetime,
+							RequireBrowser: domain.Auth.RequireBrowser,
+						}
+
+						// Create a wrapped handler with auth
+						authMiddleware := handlers.AuthMiddleware(authConfig)
+						return authMiddleware(next)(c)
+					}
+
 					return next(c)
 				}
 			}
@@ -139,6 +172,22 @@ func (s *Server) setupRoutes() {
 					if strings.HasSuffix(host, suffix) {
 						log.Printf("Matched wildcard domain: %s", domain.Name)
 						c.Set("domain", domain)
+
+						// Check if authentication is required
+						if domain.Auth.Enabled && domain.Auth.Type == "ec" {
+							// Apply EC authentication middleware
+							authConfig := handlers.ECAuthConfig{
+								PublicKey:      domain.Auth.PublicKey,
+								AllowedHosts:   domain.Auth.AllowedHosts,
+								TokenLifetime:  domain.Auth.TokenLifetime,
+								RequireBrowser: domain.Auth.RequireBrowser,
+							}
+
+							// Create a wrapped handler with auth
+							authMiddleware := handlers.AuthMiddleware(authConfig)
+							return authMiddleware(next)(c)
+						}
+
 						return next(c)
 					}
 				}
@@ -151,7 +200,12 @@ func (s *Server) setupRoutes() {
 
 	// Root handler
 	s.echo.Any("/", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
+		domainVal := c.Get("domain")
+		if domainVal == nil {
+			return echo.ErrNotFound
+		}
+		domain := domainVal.(config.Domain)
+
 		switch domain.Type {
 		case "proxy":
 			return handlers.HandleProxy(c, domain)
@@ -164,7 +218,12 @@ func (s *Server) setupRoutes() {
 
 	// Catch-all handler
 	s.echo.Any("/*", func(c echo.Context) error {
-		domain := c.Get("domain").(config.Domain)
+		domainVal := c.Get("domain")
+		if domainVal == nil {
+			return echo.ErrNotFound
+		}
+		domain := domainVal.(config.Domain)
+
 		switch domain.Type {
 		case "proxy":
 			return handlers.HandleProxy(c, domain)
@@ -246,6 +305,10 @@ func (s *Server) Start() error {
 	s.echo.Logger.Info("Setting up routes for domains:")
 	for _, domain := range s.config.Domains {
 		s.echo.Logger.Infof("  - %s (Type: %s, Public Dir: %s)", domain.Name, domain.Type, domain.PublicDir)
+		if domain.Auth.Enabled {
+			s.echo.Logger.Infof("    Auth: Enabled (EC), Token Lifetime: %ds, Require Hob: %v",
+				domain.Auth.TokenLifetime, domain.Auth.RequireBrowser)
+		}
 	}
 	s.setupRoutes()
 
@@ -269,6 +332,7 @@ func (s *Server) Start() error {
 	go s.startHTTPRedirect()
 
 	s.echo.Logger.Infof("Starting HTTPS server on port %d (IPv4)", s.config.Server.Port)
+	s.echo.Logger.Infof("Admin panel available at: https://localhost:%d/admin", s.config.Server.Port)
 	return s.echo.StartServer(server)
 }
 
